@@ -8,16 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-    "sync"
-    "time"
+	"sync"
+	"time"
 
-    "github.com/faiface/beep"
-    "github.com/faiface/beep/mp3"
-    "github.com/faiface/beep/flac"
-    "github.com/faiface/beep/speaker"
-    "github.com/faiface/beep/wav"
+	"github.com/faiface/beep"
+	"github.com/faiface/beep/flac"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
+	"github.com/faiface/beep/wav"
 
-    "github.com/jesses-code-adventures/excavator/src/utils"
+	"github.com/jesses-code-adventures/excavator/src/utils"
 
 	_ "github.com/charmbracelet/bubbles/list"
 	_ "github.com/charmbracelet/bubbles/textinput"
@@ -35,39 +35,41 @@ var (
 			Foreground(lipgloss.Color("#FFFDF5")).
 			Background(lipgloss.Color("#25A065")).
 			Padding(1, 1)
+	selectedStyle = lipgloss.NewStyle().Width(100).
+			Foreground(lipgloss.Color("#FFFDF5")).Border(lipgloss.RoundedBorder()).Background(lipgloss.Color("#25A065"))
+
 	statusMessageStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"})
 )
 
 // I know this is bad but i want gg
 type keymapHacks struct {
-    lastKey string
+	lastKey string
 }
 
 func (k *keymapHacks) updateLastKey(key string) {
-    k.lastKey = key
+	k.lastKey = key
 }
 
 func (k *keymapHacks) getLastKey() string {
-    return k.lastKey
+	return k.lastKey
 }
 
 func (k *keymapHacks) lastKeyWasG() bool {
-    return k.lastKey == "g"
+	return k.lastKey == "g"
 }
 
 type model struct {
-    server  *Server
+	server   *Server
 	cursor   int
 	viewport viewport.Model
 	ready    bool
-    keyHack keymapHacks
+	keyHack  keymapHacks
 }
-
 
 func initialModel(server *Server) model {
 	return model{
-		ready:   false,
+		ready:  false,
 		server: server,
 	}
 }
@@ -140,7 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
-            // m.handleVerticalCursorMovement()
+			// m.handleVerticalCursorMovement()
 
 		// Navigate down
 		case "down", "j":
@@ -148,7 +150,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.server.choices)-1 {
 				m.cursor++
 			}
-            // m.handleVerticalCursorMovement()
+			// m.handleVerticalCursorMovement()
 
 		// vim jumps
 		case "ctrl+d":
@@ -158,7 +160,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = len(m.server.choices) - 1
 			}
-            // m.handleVerticalCursorMovement()
+			// m.handleVerticalCursorMovement()
 
 		case "ctrl+u":
 			log.Println("Received jump up command", msg.String())
@@ -167,38 +169,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = 0
 			}
-            // m.handleVerticalCursorMovement()
+			// m.handleVerticalCursorMovement()
 
-        case "g":
-            if m.keyHack.lastKeyWasG() {
-                log.Println("Received jump to top command", msg.String())
-                m.cursor = 0
-                // m.handleVerticalCursorMovement()
-            }
+		case "g":
+			if m.keyHack.lastKeyWasG() {
+				log.Println("Received jump to top command", msg.String())
+				m.cursor = 0
+				// m.handleVerticalCursorMovement()
+			}
 
-        case "G":
-            log.Println("Received jump to bottom command", msg.String())
-            m.cursor = len(m.server.choices) - 1
-            // m.handleVerticalCursorMovement()
+		case "G":
+			log.Println("Received jump to bottom command", msg.String())
+			m.cursor = len(m.server.choices) - 1
+			// m.handleVerticalCursorMovement()
 
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
 		case "enter", " ":
 			log.Println("Received select command", msg.String())
-            choice := m.server.choices[m.cursor]
-            if choice.isDir {
-                if choice.path == ".." {
-                    m.cursor = 0
-                    m.server.changeToParentDir()
-                } else {
-                    m.cursor = 0
-                    m.server.changeDir(choice.path)
-                }
-            } else {
-                m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+			choice := m.server.choices[m.cursor]
+			if choice.isDir {
+				if choice.path == ".." {
+					m.server.changeToParentDir()
+					m.cursor = 0
+				} else {
+					m.server.changeDir(choice.path)
+					m.cursor = 0
+				}
+			} else {
+				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+			}
+        case "a":
+			choice := m.server.choices[m.cursor]
+            if !choice.isDir {
+				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
             }
 		}
-        m.keyHack.updateLastKey(msg.String())
+		m.keyHack.updateLastKey(msg.String())
 		m.viewport.SetContent(m.getContent())
 	}
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -207,17 +214,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) getContent() string {
 	s := ""
-	// Iterate over our choices
 	for i, choice := range m.server.choices {
-		cursor := "   " // no cursor
-		// var tagsDisplay string
 		if m.cursor == i {
-			cursor = "-->" // cursor!
-			// tagsDisplay = fmt.Sprintf("%v", choice.tags)
+            cursor := "-->"
+			s += selectedStyle.Render(lipgloss.JoinVertical(lipgloss.Left, fmt.Sprintf("%s %s", cursor, choice.path), fmt.Sprintf("    %v", choice.displayTags())))
 		} else {
-			// tagsDisplay = fmt.Sprintf("")
+			s += fmt.Sprintf("     %s\n", choice.path)
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, choice.path)
 	}
 	return s
 }
@@ -232,7 +235,7 @@ func (m model) View() string {
 // Struct holding the app's configuration
 type Config struct {
 	data              string
-	root           string
+	root              string
 	dbFileName        string
 	createSqlCommands []byte
 }
@@ -245,9 +248,9 @@ func newConfig(data string, samples string, dbFileName string) *Config {
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
-    config := Config{
+	config := Config{
 		data:              data,
-		root:           samples,
+		root:              samples,
 		dbFileName:        dbFileName,
 		createSqlCommands: sqlCommands,
 	}
@@ -283,8 +286,8 @@ type Server struct {
 	root        string
 	currentDir  string
 	currentUser User
-    choices    []dirEntryWithTags
-    audioPlayer    *AudioPlayer
+	choices     []dirEntryWithTags
+	audioPlayer *AudioPlayer
 }
 
 // Construct the server
@@ -313,51 +316,51 @@ func NewServer(audioPlayer *AudioPlayer) *Server {
 		// log.Println("Database setup successfully.")
 	}
 	s := Server{
-		db:         db,
-		root:       config.root,
-		currentDir: config.root,
-        audioPlayer: audioPlayer,
+		db:          db,
+		root:        config.root,
+		currentDir:  config.root,
+		audioPlayer: audioPlayer,
 	}
 	users := s.getUsers()
 	if len(users) == 0 {
-        log.Fatal("No users found")
+		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
-    s._updateChoices()
+	s._updateChoices()
 	return &s
 }
 
 func (s *Server) _updateChoices() {
-    if s.currentDir != s.root {
-        s.choices = make([]dirEntryWithTags, 0)
-        dirEntries := s.listDirEntries()
-        s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
-        s.choices = append(s.choices, dirEntries...)
-    } else {
-        s.choices = s.listDirEntries()
-    }
+	if s.currentDir != s.root {
+		s.choices = make([]dirEntryWithTags, 0)
+		dirEntries := s.listDirEntries()
+		s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
+		s.choices = append(s.choices, dirEntries...)
+	} else {
+		s.choices = s.listDirEntries()
+	}
 }
 
 func (s *Server) getWholeCurrentDir() string {
-    return filepath.Join(s.root, s.currentDir)
+	return filepath.Join(s.root, s.currentDir)
 }
 
 func (s *Server) changeDir(dir string) {
-    log.Println("Changing to dir: ", dir)
-    s.currentDir = filepath.Join(s.currentDir, dir)
-    log.Println("Current dir: ", s.currentDir)
-    s._updateChoices()
+	log.Println("Changing to dir: ", dir)
+	s.currentDir = filepath.Join(s.currentDir, dir)
+	log.Println("Current dir: ", s.currentDir)
+	s._updateChoices()
 }
 
 func (s *Server) changeToRoot() {
-    s.currentDir = s.root
-    s._updateChoices()
+	s.currentDir = s.root
+	s._updateChoices()
 }
 
 func (s *Server) changeToParentDir() {
-    log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
-    s.currentDir = filepath.Dir(s.currentDir)
-    s._updateChoices()
+	log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
+	s.currentDir = filepath.Dir(s.currentDir)
+	s._updateChoices()
 }
 
 type collectionTag struct {
@@ -367,9 +370,23 @@ type collectionTag struct {
 }
 
 type dirEntryWithTags struct {
-	path string
-	tags []collectionTag
-    isDir bool
+	path  string
+	tags  []collectionTag
+	isDir bool
+}
+
+func (d dirEntryWithTags) displayTags() string {
+    first := true
+    resp := ""
+    for _, tag := range d.tags {
+        if first {
+            resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
+            first = false
+        } else {
+            resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
+        }
+    }
+    return  resp
 }
 
 func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
@@ -408,7 +425,7 @@ func (s *Server) listDirEntries() []dirEntryWithTags {
 				matchedTags = append(matchedTags, tag)
 			}
 		}
-        isDir := file.IsDir()
+		isDir := file.IsDir()
 		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
 	}
 	return samples
@@ -484,8 +501,6 @@ func (s *Server) updateUsername(id int, name string) {
 	}
 }
 
-
-
 type App struct {
 	server         *Server
 	bubbleTeaModel model
@@ -508,93 +523,92 @@ func NewApp(server *Server, bubbleTeaModel model) App {
 type audioFileType int
 
 const (
-    MP3 audioFileType = iota
-    WAV
+	MP3 audioFileType = iota
+	WAV
 )
 
 func (a *audioFileType) String() string {
-    return [...]string{"mp3", "wav"}[*a]
+	return [...]string{"mp3", "wav"}[*a]
 }
 
 func (a *audioFileType) fromExtension(s string) {
-    switch s {
-    case ".mp3":
-        *a = MP3
-    case ".wav":
-        *a = WAV
-    default:
-        log.Fatalf("Unsupported audio file type: %v", s)
-    }
+	switch s {
+	case ".mp3":
+		*a = MP3
+	case ".wav":
+		*a = WAV
+	default:
+		log.Fatalf("Unsupported audio file type: %v", s)
+	}
 }
 
-
 type AudioPlayer struct {
-    format beep.Format
-    // Add a mutex for safe access to the currently playing streamer
-    mutex sync.Mutex
-    // Track the current playing streamer for stopping if needed
-    currentStreamer beep.StreamSeekCloser
+	format beep.Format
+	// Add a mutex for safe access to the currently playing streamer
+	mutex sync.Mutex
+	// Track the current playing streamer for stopping if needed
+	currentStreamer beep.StreamSeekCloser
 }
 
 func NewAudioPlayer() *AudioPlayer {
-    sampleRate := beep.SampleRate(48000)
-    format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
-    speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-    // speaker.Init(sampleRate, sampleRate.N(time.Second/10))
-    return &AudioPlayer{format: format}
+	sampleRate := beep.SampleRate(48000)
+	format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
+	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	// speaker.Init(sampleRate, sampleRate.N(time.Second/10))
+	return &AudioPlayer{format: format}
 
 }
 
 func (a *AudioPlayer) Close() {
-    speaker.Lock()
-    if a.currentStreamer != nil {
-        a.currentStreamer.Close()
-    }
-    speaker.Unlock()
-    speaker.Close()
+	speaker.Lock()
+	if a.currentStreamer != nil {
+		a.currentStreamer.Close()
+	}
+	speaker.Unlock()
+	speaker.Close()
 }
 
 func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
-    var streamer beep.StreamSeekCloser
-    var format beep.Format
-    var err error
-    switch filepath.Ext(path) {
-    case ".mp3":
-        streamer, format, err = mp3.Decode(f)
-    case ".wav":
-        streamer, format, err = wav.Decode(f)
-    case ".flac":
-        streamer, format, err = flac.Decode(f)
-    }
-    if err != nil {
-        log.Fatal(err)
-    }
-    return streamer, format, nil
-}
-
-func (a *AudioPlayer) PlayAudioFile(path string) {
-    f, err := os.Open(path)
+	var streamer beep.StreamSeekCloser
+	var format beep.Format
+	var err error
+	switch filepath.Ext(path) {
+	case ".mp3":
+		streamer, format, err = mp3.Decode(f)
+	case ".wav":
+		streamer, format, err = wav.Decode(f)
+	case ".flac":
+		streamer, format, err = flac.Decode(f)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
-    defer f.Close()
+	return streamer, format, nil
+}
+
+func (a *AudioPlayer) PlayAudioFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
 	done := make(chan bool)
-    streamer, format, err := a.GetStreamer(path, f)
-    defer streamer.Close()
-    resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
+	streamer, format, err := a.GetStreamer(path, f)
+	defer streamer.Close()
+	resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
 	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
-        done <- true
+		done <- true
 	})))
-    <-done
+	<-done
 }
 
 func main() {
-    audioPlayer := NewAudioPlayer()
+	audioPlayer := NewAudioPlayer()
 	server := NewServer(audioPlayer)
 	app := NewApp(server, initialModel(server))
 	defer server.db.Close()
 	defer app.logFile.Close()
-    defer audioPlayer.Close()
+	defer audioPlayer.Close()
 	p := tea.NewProgram(
 		app.bubbleTeaModel,
 		tea.WithAltScreen(),

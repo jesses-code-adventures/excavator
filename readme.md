@@ -28,10 +28,10 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [ ] create collections, which are ephemeral directories stored in (maybe apple pickle?) data types designed to be able to collection to a concrete directory you can drag-and-drop elsewhere.
 - [ ] create tags that assign the samples to sub-directory in a collection. these should not copy the file, but create a reference in the locally stored file.
 - [ ] browse samples using J/up arrow and K/down arrow.
-- [ ] press Q to quit.
-- [ ] press A to audition a sample you're hovering over.
+- [x] press Q to quit.
+- [x] press A to audition a sample you're hovering over.
 - [ ] press R to jump to and audition a random sample from the current directory.
-- [ ] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
+- [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
 - [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
 - [ ] press shift-A to toggle auto-audition mode.
 - [ ] press shift-N to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
@@ -50,8 +50,8 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - go-sqlite3 for data storage (go install github.com/mattn/go-sqlite3)
 
 ### architecture
-- [ ] app state should be stored in "~/.excavator-tui"
-- [ ] the directory should contain "~/.excavator-tui/excavator.db" which will be an sqlite database.
+- [x] app state should be stored in "~/.excavator-tui"
+- [x] the directory should contain "~/.excavator-tui/excavator.db" which will be an sqlite database.
 - [ ] the database should be loaded into memory on launch and dumped back to disk on writes (maybe periodically instead) and on exit.
 
 ### db model
