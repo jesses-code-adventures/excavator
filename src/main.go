@@ -8,8 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+    "sync"
+    "time"
 
-	"github.com/jesses-code-adventures/excavator/src/utils"
+    "github.com/faiface/beep"
+    "github.com/faiface/beep/mp3"
+    "github.com/faiface/beep/flac"
+    "github.com/faiface/beep/speaker"
+    "github.com/faiface/beep/wav"
+
+    "github.com/jesses-code-adventures/excavator/src/utils"
 
 	_ "github.com/charmbracelet/bubbles/list"
 	_ "github.com/charmbracelet/bubbles/textinput"
@@ -187,7 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     m.server.changeDir(choice.path)
                 }
             } else {
-                log.Println("Selected file: ", choice.path)
+                m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
             }
 		}
         m.keyHack.updateLastKey(msg.String())
@@ -276,10 +284,11 @@ type Server struct {
 	currentDir  string
 	currentUser User
     choices    []dirEntryWithTags
+    audioPlayer    *AudioPlayer
 }
 
 // Construct the server
-func NewServer() *Server {
+func NewServer(audioPlayer *AudioPlayer) *Server {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
 	var samples = flag.String("samples", "~/Library/Audio/Sounds/Samples", "Root samples directory")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
@@ -307,6 +316,7 @@ func NewServer() *Server {
 		db:         db,
 		root:       config.root,
 		currentDir: config.root,
+        audioPlayer: audioPlayer,
 	}
 	users := s.getUsers()
 	if len(users) == 0 {
@@ -384,7 +394,6 @@ func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 }
 
 func (s *Server) listDirEntries() []dirEntryWithTags {
-    log.Println("Listing dir entries for: ", s.currentDir)
 	files, err := os.ReadDir(s.currentDir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
@@ -475,6 +484,8 @@ func (s *Server) updateUsername(id int, name string) {
 	}
 }
 
+
+
 type App struct {
 	server         *Server
 	bubbleTeaModel model
@@ -494,15 +505,99 @@ func NewApp(server *Server, bubbleTeaModel model) App {
 	}
 }
 
+type audioFileType int
+
+const (
+    MP3 audioFileType = iota
+    WAV
+)
+
+func (a *audioFileType) String() string {
+    return [...]string{"mp3", "wav"}[*a]
+}
+
+func (a *audioFileType) fromExtension(s string) {
+    switch s {
+    case ".mp3":
+        *a = MP3
+    case ".wav":
+        *a = WAV
+    default:
+        log.Fatalf("Unsupported audio file type: %v", s)
+    }
+}
+
+
+type AudioPlayer struct {
+    format beep.Format
+    // Add a mutex for safe access to the currently playing streamer
+    mutex sync.Mutex
+    // Track the current playing streamer for stopping if needed
+    currentStreamer beep.StreamSeekCloser
+}
+
+func NewAudioPlayer() *AudioPlayer {
+    sampleRate := beep.SampleRate(48000)
+    format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
+    speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+    // speaker.Init(sampleRate, sampleRate.N(time.Second/10))
+    return &AudioPlayer{format: format}
+
+}
+
+func (a *AudioPlayer) Close() {
+    speaker.Lock()
+    if a.currentStreamer != nil {
+        a.currentStreamer.Close()
+    }
+    speaker.Unlock()
+    speaker.Close()
+}
+
+func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
+    var streamer beep.StreamSeekCloser
+    var format beep.Format
+    var err error
+    switch filepath.Ext(path) {
+    case ".mp3":
+        streamer, format, err = mp3.Decode(f)
+    case ".wav":
+        streamer, format, err = wav.Decode(f)
+    case ".flac":
+        streamer, format, err = flac.Decode(f)
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    return streamer, format, nil
+}
+
+func (a *AudioPlayer) PlayAudioFile(path string) {
+    f, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+    defer f.Close()
+	done := make(chan bool)
+    streamer, format, err := a.GetStreamer(path, f)
+    defer streamer.Close()
+    resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
+	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
+        done <- true
+	})))
+    <-done
+}
+
 func main() {
-	server := NewServer()
+    audioPlayer := NewAudioPlayer()
+	server := NewServer(audioPlayer)
 	app := NewApp(server, initialModel(server))
 	defer server.db.Close()
 	defer app.logFile.Close()
+    defer audioPlayer.Close()
 	p := tea.NewProgram(
 		app.bubbleTeaModel,
 		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 	_, err := p.Run()
 	if err != nil {
