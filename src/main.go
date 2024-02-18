@@ -31,17 +31,36 @@ var (
 				Foreground(lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"})
 )
 
+// I know this is bad but i want gg
+type keymapHacks struct {
+    lastKey string
+}
+
+func (k *keymapHacks) updateLastKey(key string) {
+    k.lastKey = key
+}
+
+func (k *keymapHacks) getLastKey() string {
+    return k.lastKey
+}
+
+func (k *keymapHacks) lastKeyWasG() bool {
+    return k.lastKey == "g"
+}
+
 type model struct {
-	choices  []dirEntryWithTags
+    server  *Server
 	cursor   int
 	viewport viewport.Model
 	ready    bool
+    keyHack keymapHacks
 }
 
-func initialModel(choices []dirEntryWithTags) model {
+
+func initialModel(server *Server) model {
 	return model{
 		ready:   false,
-		choices: choices,
+		server: server,
 	}
 }
 
@@ -50,27 +69,31 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+// Get the header of the viewport
 func (m model) headerView() string {
 	title := titleStyle.Render("Excavator - Samples")
 	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
+// Get one control
 func controlView(key string, control string) string {
-    return lipgloss.JoinVertical(lipgloss.Center, key, control)
+	return lipgloss.JoinVertical(lipgloss.Center, key, control)
 }
 
+// Get the controls that fill up the footer
 func controlsView(width int) string {
 	quitControl := controlView("Q", "Quit")
 	downControl := controlView("J", "Down")
 	upControl := controlView("K", "Up")
-    joinedControls := lipgloss.JoinHorizontal(lipgloss.Center, quitControl, downControl, upControl)
-    return lipgloss.PlaceHorizontal(width, lipgloss.Center, joinedControls)
+	joinedControls := lipgloss.JoinHorizontal(lipgloss.Center, quitControl, downControl, upControl)
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, joinedControls)
 }
 
+// Get the footer of the view
 func (m model) footerView() string {
-    line := strings.Repeat("─", max(0, m.viewport.Width))
-    controls := controlsView(m.viewport.Width)
+	line := strings.Repeat("─", max(0, m.viewport.Width))
+	controls := controlsView(m.viewport.Width)
 	return lipgloss.JoinVertical(lipgloss.Center, line, controls)
 }
 
@@ -82,14 +105,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		headerHeight := lipgloss.Height(m.headerView())
 		footerHeight := lipgloss.Height(m.footerView())
 		verticalMarginHeight := headerHeight + footerHeight
-
 		if !m.ready {
 			// Handles waiting for the window to instantiate so the viewport can be created
 			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
 			m.viewport.YPosition = headerHeight
 			m.viewport.SetContent(m.getContent())
 			m.viewport.YPosition = headerHeight + 1
-            m.ready = true
+			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - verticalMarginHeight
@@ -110,22 +132,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
+            // m.handleVerticalCursorMovement()
 
 		// Navigate down
 		case "down", "j":
 			log.Println("Received down command", msg.String())
-			if m.cursor < len(m.choices)-1 {
+			if m.cursor < len(m.server.choices)-1 {
 				m.cursor++
 			}
+            // m.handleVerticalCursorMovement()
 
 		// vim jumps
 		case "ctrl+d":
 			log.Println("Received jump down command", msg.String())
-			if m.cursor < len(m.choices)-8 {
+			if m.cursor < len(m.server.choices)-8 {
 				m.cursor += 8
 			} else {
-				m.cursor = len(m.choices) - 1
+				m.cursor = len(m.server.choices) - 1
 			}
+            // m.handleVerticalCursorMovement()
 
 		case "ctrl+u":
 			log.Println("Received jump up command", msg.String())
@@ -134,30 +159,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = 0
 			}
+            // m.handleVerticalCursorMovement()
+
+        case "g":
+            if m.keyHack.lastKeyWasG() {
+                log.Println("Received jump to top command", msg.String())
+                m.cursor = 0
+                // m.handleVerticalCursorMovement()
+            }
+
+        case "G":
+            log.Println("Received jump to bottom command", msg.String())
+            m.cursor = len(m.server.choices) - 1
+            // m.handleVerticalCursorMovement()
 
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
 		case "enter", " ":
 			log.Println("Received select command", msg.String())
-			// _, ok := m.selected[m.cursor]
-			// if ok {
-			// 	delete(m.selected, m.cursor)
-			// } else {
-			// 	m.selected[m.cursor] = struct{}{}
-			// }
+            choice := m.server.choices[m.cursor]
+            if choice.isDir {
+                if choice.path == ".." {
+                    m.cursor = 0
+                    m.server.changeToParentDir()
+                } else {
+                    m.cursor = 0
+                    m.server.changeDir(choice.path)
+                }
+            } else {
+                log.Println("Selected file: ", choice.path)
+            }
 		}
-        log.Println("Cursor: ", m.cursor)
-        m.viewport.SetContent(m.getContent())
+        m.keyHack.updateLastKey(msg.String())
+		m.viewport.SetContent(m.getContent())
 	}
-    m.viewport, cmd = m.viewport.Update(msg)
+	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
 
 func (m model) getContent() string {
 	s := ""
 	// Iterate over our choices
-	for i, choice := range m.choices {
-		// Is the cursor pointing at this choice?
+	for i, choice := range m.server.choices {
 		cursor := "   " // no cursor
 		// var tagsDisplay string
 		if m.cursor == i {
@@ -166,11 +209,8 @@ func (m model) getContent() string {
 		} else {
 			// tagsDisplay = fmt.Sprintf("")
 		}
-		// Render the row
 		s += fmt.Sprintf("%s %s\n", cursor, choice.path)
 	}
-
-	// The footer
 	return s
 }
 
@@ -184,7 +224,7 @@ func (m model) View() string {
 // Struct holding the app's configuration
 type Config struct {
 	data              string
-	samples           string
+	root           string
 	dbFileName        string
 	createSqlCommands []byte
 }
@@ -197,12 +237,13 @@ func newConfig(data string, samples string, dbFileName string) *Config {
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
-	return &Config{
+    config := Config{
 		data:              data,
-		samples:           samples,
+		root:           samples,
 		dbFileName:        dbFileName,
 		createSqlCommands: sqlCommands,
 	}
+	return &config
 }
 
 // Handles either creating or checking the existence of the data and samples directories
@@ -212,8 +253,8 @@ func (c *Config) handleDirectories() {
 			panic(err)
 		}
 	}
-	if _, err := os.Stat(c.samples); os.IsNotExist(err) {
-		log.Fatal("No directory at config's samples directory ", c.samples)
+	if _, err := os.Stat(c.root); os.IsNotExist(err) {
+		log.Fatal("No directory at config's samples directory ", c.root)
 	}
 }
 
@@ -231,13 +272,14 @@ func (c *Config) getDbPath() string {
 // The main struct holding the server
 type Server struct {
 	db          *sql.DB
-	samples     string
+	root        string
 	currentDir  string
 	currentUser User
+    choices    []dirEntryWithTags
 }
 
 // Construct the server
-func Sever() *Server {
+func NewServer() *Server {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
 	var samples = flag.String("samples", "~/Library/Audio/Sounds/Samples", "Root samples directory")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
@@ -263,15 +305,49 @@ func Sever() *Server {
 	}
 	s := Server{
 		db:         db,
-		samples:    config.samples,
-		currentDir: config.samples,
+		root:       config.root,
+		currentDir: config.root,
 	}
 	users := s.getUsers()
 	if len(users) == 0 {
-		println("No users found")
+        log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
+    s._updateChoices()
 	return &s
+}
+
+func (s *Server) _updateChoices() {
+    if s.currentDir != s.root {
+        s.choices = make([]dirEntryWithTags, 0)
+        dirEntries := s.listDirEntries()
+        s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
+        s.choices = append(s.choices, dirEntries...)
+    } else {
+        s.choices = s.listDirEntries()
+    }
+}
+
+func (s *Server) getWholeCurrentDir() string {
+    return filepath.Join(s.root, s.currentDir)
+}
+
+func (s *Server) changeDir(dir string) {
+    log.Println("Changing to dir: ", dir)
+    s.currentDir = filepath.Join(s.currentDir, dir)
+    log.Println("Current dir: ", s.currentDir)
+    s._updateChoices()
+}
+
+func (s *Server) changeToRoot() {
+    s.currentDir = s.root
+    s._updateChoices()
+}
+
+func (s *Server) changeToParentDir() {
+    log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
+    s.currentDir = filepath.Dir(s.currentDir)
+    s._updateChoices()
 }
 
 type collectionTag struct {
@@ -283,11 +359,12 @@ type collectionTag struct {
 type dirEntryWithTags struct {
 	path string
 	tags []collectionTag
+    isDir bool
 }
 
 func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	dirs := make([]os.DirEntry, 0)
-    files := make([]os.DirEntry, 0)
+	files := make([]os.DirEntry, 0)
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue
@@ -306,23 +383,24 @@ func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	return append(dirs, files...)
 }
 
-func (s *Server) listCurrentDir() []dirEntryWithTags {
+func (s *Server) listDirEntries() []dirEntryWithTags {
+    log.Println("Listing dir entries for: ", s.currentDir)
 	files, err := os.ReadDir(s.currentDir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
-    files = s.filterDirEntries(files)
-	collectionTags := s.getCollectionTags(s.samples, &s.currentDir)
+	files = s.filterDirEntries(files)
+	collectionTags := s.getCollectionTags(s.root, &s.currentDir)
 	var samples []dirEntryWithTags
 	for _, file := range files {
 		matchedTags := make([]collectionTag, 0)
 		for _, tag := range collectionTags {
 			if strings.Contains(tag.filePath, file.Name()) {
 				matchedTags = append(matchedTags, tag)
-
 			}
 		}
-		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags})
+        isDir := file.IsDir()
+		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
 	}
 	return samples
 }
@@ -417,8 +495,8 @@ func NewApp(server *Server, bubbleTeaModel model) App {
 }
 
 func main() {
-	server := Sever()
-	app := NewApp(server, initialModel(server.listCurrentDir()))
+	server := NewServer()
+	app := NewApp(server, initialModel(server))
 	defer server.db.Close()
 	defer app.logFile.Close()
 	p := tea.NewProgram(
