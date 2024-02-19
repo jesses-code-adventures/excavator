@@ -30,18 +30,21 @@ import (
 //////////////////////// UI ////////////////////////
 
 var (
-	appStyle   = lipgloss.NewStyle().Padding(0, 1)
+	green    = lipgloss.Color("#25A065")
+	pink     = lipgloss.Color("#E441B5")
+	white    = lipgloss.Color("#FFFDF5")
+	appStyle = lipgloss.NewStyle().
+			Padding(0, 1)
 	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFDF5")).
-			Background(lipgloss.Color("#25A065")).
+			Foreground(white).
+			Background(green).
 			Padding(1, 1)
-	selectedStyle = lipgloss.NewStyle().Width(100).Height(1).
-			Foreground(lipgloss.Color("#FFFDF5")).Border(lipgloss.RoundedBorder()).Background(lipgloss.Color("#25A065"))
-	unselectedStyle = lipgloss.NewStyle().Width(100).Height(1).
-			Border(lipgloss.RoundedBorder())
-
-	statusMessageStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"})
+	selectedStyle = lipgloss.NewStyle().
+			Border(lipgloss.HiddenBorder()).
+			Foreground(pink)
+			// Background(pink)
+	unselectedStyle = lipgloss.NewStyle().
+			Border(lipgloss.HiddenBorder())
 )
 
 // I know this is bad but i want gg
@@ -119,7 +122,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		verticalMarginHeight := headerHeight + footerHeight
 		if !m.ready {
 			// Handles waiting for the window to instantiate so the viewport can be created
-			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
+			m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
 			m.viewport.SetContent(m.getContent())
 			m.ready = true
 		} else {
@@ -142,7 +145,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
-			// m.handleVerticalCursorMovement()
 
 		// Navigate down
 		case "down", "j":
@@ -150,7 +152,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.server.choices)-1 {
 				m.cursor++
 			}
-			// m.handleVerticalCursorMovement()
 
 		// vim jumps
 		case "ctrl+d":
@@ -160,7 +161,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = len(m.server.choices) - 1
 			}
-			// m.handleVerticalCursorMovement()
 
 		case "ctrl+u":
 			log.Println("Received jump up command", msg.String())
@@ -169,19 +169,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = 0
 			}
-			// m.handleVerticalCursorMovement()
 
 		case "g":
 			if m.keyHack.lastKeyWasG() {
 				log.Println("Received jump to top command", msg.String())
 				m.cursor = 0
-				// m.handleVerticalCursorMovement()
 			}
 
 		case "G":
 			log.Println("Received jump to bottom command", msg.String())
 			m.cursor = len(m.server.choices) - 1
-			// m.handleVerticalCursorMovement()
 
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
@@ -190,11 +187,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			choice := m.server.choices[m.cursor]
 			if choice.isDir {
 				if choice.path == ".." {
+                    m.cursor = 0
 					m.server.changeToParentDir()
-					m.cursor = 0
 				} else {
+                    m.cursor = 0
 					m.server.changeDir(choice.path)
-					m.cursor = 0
 				}
 			} else {
 				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
@@ -217,7 +214,7 @@ func (m model) getContent() string {
 	for i, choice := range m.server.choices {
 		if m.cursor == i {
 			cursor := "-->"
-			s += selectedStyle.Render(fmt.Sprintf("%s %s", cursor, choice.path), fmt.Sprintf("    %v", choice.displayTags()))
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
 		} else {
 			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
 		}
