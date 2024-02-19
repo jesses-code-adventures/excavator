@@ -30,6 +30,7 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [ ] browse samples using J/up arrow and K/down arrow.
 - [x] press Q to quit.
 - [x] press A to audition a sample you're hovering over.
+- [ ] samples should play asynchronously so the user can continue browsing while a sample plays
 - [ ] press R to jump to and audition a random sample from the current directory.
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
 - [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
