@@ -35,8 +35,10 @@ var (
 			Foreground(lipgloss.Color("#FFFDF5")).
 			Background(lipgloss.Color("#25A065")).
 			Padding(1, 1)
-	selectedStyle = lipgloss.NewStyle().Width(100).
+	selectedStyle = lipgloss.NewStyle().Width(100).Height(1).
 			Foreground(lipgloss.Color("#FFFDF5")).Border(lipgloss.RoundedBorder()).Background(lipgloss.Color("#25A065"))
+	unselectedStyle = lipgloss.NewStyle().Width(100).Height(1).
+			Border(lipgloss.RoundedBorder())
 
 	statusMessageStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"})
@@ -118,9 +120,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			// Handles waiting for the window to instantiate so the viewport can be created
 			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
-			m.viewport.YPosition = headerHeight
 			m.viewport.SetContent(m.getContent())
-			m.viewport.YPosition = headerHeight + 1
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
@@ -199,11 +199,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 			}
-        case "a":
+		case "a":
 			choice := m.server.choices[m.cursor]
-            if !choice.isDir {
+			if !choice.isDir {
 				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
-            }
+			}
 		}
 		m.keyHack.updateLastKey(msg.String())
 		m.viewport.SetContent(m.getContent())
@@ -216,10 +216,10 @@ func (m model) getContent() string {
 	s := ""
 	for i, choice := range m.server.choices {
 		if m.cursor == i {
-            cursor := "-->"
-			s += selectedStyle.Render(lipgloss.JoinVertical(lipgloss.Left, fmt.Sprintf("%s %s", cursor, choice.path), fmt.Sprintf("    %v", choice.displayTags())))
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s", cursor, choice.path), fmt.Sprintf("    %v", choice.displayTags()))
 		} else {
-			s += fmt.Sprintf("     %s\n", choice.path)
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
 		}
 	}
 	return s
@@ -313,7 +313,7 @@ func NewServer(audioPlayer *AudioPlayer) *Server {
 	if err != nil {
 		log.Fatalf("Failed to execute SQL commands: %v", err)
 	} else {
-		// log.Println("Database setup successfully.")
+		log.Println("Database setup successfully.")
 	}
 	s := Server{
 		db:          db,
@@ -376,17 +376,17 @@ type dirEntryWithTags struct {
 }
 
 func (d dirEntryWithTags) displayTags() string {
-    first := true
-    resp := ""
-    for _, tag := range d.tags {
-        if first {
-            resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
-            first = false
-        } else {
-            resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
-        }
-    }
-    return  resp
+	first := true
+	resp := ""
+	for _, tag := range d.tags {
+		if first {
+			resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
+			first = false
+		} else {
+			resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
+		}
+	}
+	return resp
 }
 
 func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
@@ -401,9 +401,7 @@ func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 			continue
 		}
 		if strings.HasSuffix(entry.Name(), ".wav") || strings.HasSuffix(entry.Name(), ".mp3") ||
-			strings.HasSuffix(entry.Name(), ".aif") || strings.HasSuffix(entry.Name(), ".aiff") ||
-			strings.HasSuffix(entry.Name(), ".flac") || strings.HasSuffix(entry.Name(), ".ogg") ||
-			strings.HasSuffix(entry.Name(), ".m4a") {
+			strings.HasSuffix(entry.Name(), ".flac") {
 			files = append(files, entry)
 		}
 	}
@@ -525,10 +523,11 @@ type audioFileType int
 const (
 	MP3 audioFileType = iota
 	WAV
+	FLAC
 )
 
 func (a *audioFileType) String() string {
-	return [...]string{"mp3", "wav"}[*a]
+	return [...]string{"mp3", "wav", "flac"}[*a]
 }
 
 func (a *audioFileType) fromExtension(s string) {
@@ -537,6 +536,8 @@ func (a *audioFileType) fromExtension(s string) {
 		*a = MP3
 	case ".wav":
 		*a = WAV
+	case ".flac":
+		*a = FLAC
 	default:
 		log.Fatalf("Unsupported audio file type: %v", s)
 	}
