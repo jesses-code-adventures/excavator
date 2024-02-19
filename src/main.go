@@ -19,6 +19,8 @@ import (
 
 	"github.com/jesses-code-adventures/excavator/src/utils"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	_ "github.com/charmbracelet/bubbles/list"
 	_ "github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -42,7 +44,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder()).
 			Foreground(pink)
-			// Background(pink)
+		// Background(pink)
 	unselectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder())
 )
@@ -64,10 +66,74 @@ func (k *keymapHacks) lastKeyWasG() bool {
 	return k.lastKey == "g"
 }
 
+type KeyMap struct {
+	Up         key.Binding
+	Down       key.Binding
+	Quit       key.Binding
+	JumpUp     key.Binding
+	JumpDown   key.Binding
+	JumpBottom key.Binding
+	Audition   key.Binding
+	Help       key.Binding
+	Enter      key.Binding
+}
+
+// ShortHelp returns keybindings to be shown in the mini help view. It's part
+// of the key.Map interface.
+func (k KeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Quit, k.Audition,k.Up, k.Down, k.JumpUp, k.JumpDown}
+}
+
+// FullHelp returns keybindings for the expanded help view. It's part of the
+// key.Map interface.
+func (k KeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.JumpUp, k.JumpDown}, // first column
+		{k.Audition, k.Enter},                // first column
+		{k.Help, k.Quit},                     // second column
+	}
+}
+
+var DefaultKeyMap = KeyMap{
+	Up: key.NewBinding(
+		key.WithKeys("k", "up"),
+		key.WithHelp("↑/k", "move up"),
+	),
+	Down: key.NewBinding(
+		key.WithKeys("j", "down"),
+		key.WithHelp("↓/j", "move down"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("q", "ctrl+c"),
+		key.WithHelp("q", "quit"),
+	),
+	JumpUp: key.NewBinding(
+		key.WithKeys("ctrl+u"),
+		key.WithHelp("^u", "jump up"),
+	),
+	JumpDown: key.NewBinding(
+		key.WithKeys("ctrl+d"),
+		key.WithHelp("^d", "jump down"),
+	),
+	JumpBottom: key.NewBinding(
+		key.WithKeys("G"),
+		key.WithHelp("G", "jump to bottom"),
+	),
+	Enter: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "select"),
+	),
+	Audition: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "audition sample"),
+	),
+}
+
 type model struct {
 	server   *Server
 	cursor   int
 	viewport viewport.Model
+	help     help.Model
 	ready    bool
 	keyHack  keymapHacks
 }
@@ -76,6 +142,7 @@ func initialModel(server *Server) model {
 	return model{
 		ready:  false,
 		server: server,
+		help:   help.New(),
 	}
 }
 
@@ -98,20 +165,24 @@ func controlView(key string, control string) string {
 
 // Get the controls that fill up the footer
 func controlsView(width int) string {
+	// TODO: Change to floaty help https://github.com/charmbracelet/bubbletea/blob/master/examples/help/main.go
 	quitControl := controlView("Q", "Quit")
 	downControl := controlView("J", "Down")
 	upControl := controlView("K", "Up")
-	joinedControls := lipgloss.JoinHorizontal(lipgloss.Center, quitControl, downControl, upControl)
+	newCollectionControl := controlView("N", "New Collection")
+	joinedControls := lipgloss.JoinHorizontal(lipgloss.Center, quitControl, downControl, upControl, newCollectionControl)
 	return lipgloss.PlaceHorizontal(width, lipgloss.Center, joinedControls)
 }
 
 // Get the footer of the view
 func (m model) footerView() string {
-	line := strings.Repeat("─", max(0, m.viewport.Width))
-	controls := controlsView(m.viewport.Width)
-	return lipgloss.JoinVertical(lipgloss.Center, line, controls)
+	// line := strings.Repeat("─", max(0, m.viewport.Width))
+	// controls := controlsView(m.viewport.Width)
+	// return lipgloss.JoinVertical(lipgloss.Center, line, controls)
+    return m.help.View(DefaultKeyMap)
 }
 
+// Takes a message and updates the model
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
@@ -132,75 +203,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Controls
 	case tea.KeyMsg:
-
-		switch msg.String() {
-		// Exit
-		case "ctrl+c", "q":
-			log.Println("Received exit command", msg.String())
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Quit):
 			return m, tea.Quit
-
-		// Navigate up
-		case "up", "k":
-			log.Println("Received up command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-
-		// Navigate down
-		case "down", "j":
-			log.Println("Received down command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.Down):
 			if m.cursor < len(m.server.choices)-1 {
 				m.cursor++
 			}
-
-		// vim jumps
-		case "ctrl+d":
-			log.Println("Received jump down command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.JumpDown):
 			if m.cursor < len(m.server.choices)-8 {
 				m.cursor += 8
 			} else {
 				m.cursor = len(m.server.choices) - 1
 			}
-
-		case "ctrl+u":
-			log.Println("Received jump up command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.JumpUp):
 			if m.cursor > 8 {
 				m.cursor -= 8
 			} else {
 				m.cursor = 0
 			}
-
-		case "g":
-			if m.keyHack.lastKeyWasG() {
-				log.Println("Received jump to top command", msg.String())
-				m.cursor = 0
+		case key.Matches(msg, DefaultKeyMap.Audition):
+			choice := m.server.choices[m.cursor]
+			if !choice.isDir {
+				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 			}
-
-		case "G":
-			log.Println("Received jump to bottom command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.JumpBottom):
+            m.viewport.GotoBottom()
 			m.cursor = len(m.server.choices) - 1
-
+		case key.Matches(msg, DefaultKeyMap.Help):
+			m.help.ShowAll = !m.help.ShowAll
 		// The "enter" key and the spacebar (a literal space) toggle
 		// the selected state for the item that the cursor is pointing at.
-		case "enter", " ":
-			log.Println("Received select command", msg.String())
+		case key.Matches(msg, DefaultKeyMap.Enter):
 			choice := m.server.choices[m.cursor]
 			if choice.isDir {
 				if choice.path == ".." {
-                    m.cursor = 0
+					m.cursor = 0
 					m.server.changeToParentDir()
 				} else {
-                    m.cursor = 0
+					m.cursor = 0
 					m.server.changeDir(choice.path)
 				}
 			} else {
 				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 			}
-		case "a":
-			choice := m.server.choices[m.cursor]
-			if !choice.isDir {
-				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+		default:
+			if msg.String() == "g" {
+				if m.keyHack.getLastKey() == "g" {
+                    m.viewport.GotoTop()
+					m.cursor = 0
+				}
 			}
+
 		}
 		m.keyHack.updateLastKey(msg.String())
 		m.viewport.SetContent(m.getContent())
@@ -223,7 +281,6 @@ func (m model) getContent() string {
 }
 
 func (m model) View() string {
-	// Render the viewport
 	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView()))
 }
 
