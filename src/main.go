@@ -13,21 +13,22 @@ import (
 
 	"github.com/jesses-code-adventures/excavator/src/utils"
 
+	// Database
 	_ "github.com/mattn/go-sqlite3"
 
+	// Audio
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/flac"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 	"github.com/faiface/beep/wav"
 
+	// Frontend
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
-
-	// "github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -53,9 +54,41 @@ var (
 				BorderTop(true).
 				Height(8).
 				Width(255)
-	viewportStyle = lipgloss.NewStyle()
-	// Padding(1, 1).
+	viewportStyle  = lipgloss.NewStyle()
+	unfocusedInput = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Background(lipgloss.Color("236")).
+			Margin(2, 1).
+			Border(lipgloss.HiddenBorder())
+	focusedInput = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Margin(2, 1).
+			Background(lipgloss.Color("236"))
+	formStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Border(lipgloss.RoundedBorder()).
+			Margin(2, 1, 0)
 )
+
+// Standard inputs to be used for all forms
+type formInput struct {
+	name  string
+	input textinput.Model
+}
+
+func newFormInput(name string) formInput {
+	return formInput{
+		name:  name,
+		input: textinput.New(),
+	}
+}
+
+func getNewCollectionInputs() []formInput {
+	return []formInput{
+		newFormInput("Name"),
+		newFormInput("Description"),
+	}
+}
 
 // I know this is bad but i want gg
 type keymapHacks struct {
@@ -150,13 +183,13 @@ type model struct {
 	formFocus    int
 	keys         KeyMap
 	keyHack      keymapHacks
-	server       *Server
+	server       *server
 	viewport     viewport.Model
 	help         help.Model
 	inputs       []formInput
 }
 
-func initialModel(server *Server) model {
+func initialModel(server *server) model {
 	return model{
 		ready:    false,
 		quitting: false,
@@ -164,11 +197,6 @@ func initialModel(server *Server) model {
 		help:     help.New(),
 		keys:     DefaultKeyMap,
 	}
-}
-
-func (m model) Init() tea.Cmd {
-	// Just return `nil`, which means "no I/O right now, please."
-	return nil
 }
 
 // Get the header of the viewport
@@ -180,35 +208,16 @@ func (m model) headerView() string {
 
 // Get the footer of the view
 func (m model) footerView() string {
-    helpText := m.help.View(m.keys)
-    termWidth := m.viewport.Width
-    helpTextLength := lipgloss.Width(helpText)
-    padding := (termWidth - helpTextLength) / 2
-    if padding < 0 {
-        padding = 0
-    }
-    paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
-    centeredHelpText := paddedHelpStyle.Render(helpText)
-    return centeredHelpText
-}
-
-type formInput struct {
-	name  string
-	input textinput.Model
-}
-
-func newFormInput(name string) formInput {
-	return formInput{
-		name:  name,
-		input: textinput.New(),
+	helpText := m.help.View(m.keys)
+	termWidth := m.viewport.Width
+	helpTextLength := lipgloss.Width(helpText)
+	padding := (termWidth - helpTextLength) / 2
+	if padding < 0 {
+		padding = 0
 	}
-}
-
-func getNewCollectionInputs() []formInput {
-	return []formInput{
-		newFormInput("Name"),
-		newFormInput("Description"),
-	}
+	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
+	centeredHelpText := paddedHelpStyle.Render(helpText)
+	return centeredHelpText
 }
 
 // Handle a single key press
@@ -292,6 +301,40 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 	return m
 }
 
+// Formview handler
+func (m model) formView() string {
+	if !m.inFormWindow {
+		return ""
+	}
+	s := ""
+	for i, input := range m.inputs {
+		if m.formFocus == i {
+			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+		} else {
+			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+		}
+	}
+	return s
+}
+
+// Standard content handler
+func (m model) getContent() string {
+	s := ""
+	for i, choice := range m.server.choices {
+		if m.cursor == i {
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
+		} else {
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
+		}
+	}
+	return s
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
 // Takes a message and updates the model
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -318,42 +361,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.inFormWindow {
 		for i, input := range m.inputs {
-			var newInput textinput.Model
-			newInput, cmd = input.input.Update(msg)
-			m.inputs[i].input = newInput
 			if i == m.formFocus {
+				var newInput textinput.Model
+				newInput, cmd = input.input.Update(msg)
+				m.inputs[i].input = newInput
 				m.inputs[i].input.Focus()
 			}
 		}
 	}
-	m.viewport.SetContent(m.getContent())
-	m.viewport, cmd = m.viewport.Update(msg)
+    switch m.inFormWindow {
+    case true:
+        m.viewport.SetContent(m.formView())
+    case false:
+        m.viewport.SetContent(m.getContent())
+        m.viewport, cmd = m.viewport.Update(msg)
+    }
 	return m, cmd
-}
-
-func (m model) getContent() string {
-	if m.inFormWindow {
-		return m.formView()
-	} else {
-		s := ""
-		for i, choice := range m.server.choices {
-			if m.cursor == i {
-				cursor := "-->"
-				s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
-			} else {
-				s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
-			}
-		}
-		return s
-	}
-}
-
-func (m model) formView() string {
-	s := ""
-	for _, input := range m.inputs {
-		s += fmt.Sprintf("%v: %v\n", input.name, input.input.View())
-	}
-	return s
 }
 
 func (m model) View() string {
@@ -363,10 +386,43 @@ func (m model) View() string {
 	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 }
 
-//////////////////////// SERVER ////////////////////////
+//////////////////////// LOCAL SERVER ////////////////////////
+
+// A connection between a tag and a collection
+type collectionTag struct {
+	filePath       string
+	collectionName string
+	subCollection  string
+}
+
+// A directory entry with associated tags
+type dirEntryWithTags struct {
+	path  string
+	tags  []collectionTag
+	isDir bool
+}
+
+func (d dirEntryWithTags) displayTags() string {
+	first := true
+	resp := ""
+	for _, tag := range d.tags {
+		if first {
+			resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
+			first = false
+		} else {
+			resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
+		}
+	}
+	return resp
+}
+
+type user struct {
+	id   int
+	name string
+}
 
 // Struct holding the app's configuration
-type Config struct {
+type config struct {
 	data              string
 	root              string
 	dbFileName        string
@@ -374,14 +430,14 @@ type Config struct {
 }
 
 // Constructor for the Config struct
-func newConfig(data string, samples string, dbFileName string) *Config {
+func newConfig(data string, samples string, dbFileName string) *config {
 	data = utils.ExpandHomeDir(data)
 	samples = utils.ExpandHomeDir(samples)
 	sqlCommands, err := os.ReadFile("src/sql_commands/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
-	config := Config{
+	config := config{
 		data:              data,
 		root:              samples,
 		dbFileName:        dbFileName,
@@ -391,7 +447,7 @@ func newConfig(data string, samples string, dbFileName string) *Config {
 }
 
 // Handles either creating or checking the existence of the data and samples directories
-func (c *Config) handleDirectories() {
+func (c *config) handleDirectories() {
 	if _, err := os.Stat(c.data); os.IsNotExist(err) {
 		if err := os.MkdirAll(c.data, 0755); err != nil {
 			panic(err)
@@ -403,7 +459,7 @@ func (c *Config) handleDirectories() {
 }
 
 // Standardized file structure for the database file
-func (c *Config) getDbPath() string {
+func (c *config) getDbPath() string {
 	if c.dbFileName == "" {
 		c.dbFileName = "excavator"
 	}
@@ -414,17 +470,17 @@ func (c *Config) getDbPath() string {
 }
 
 // The main struct holding the server
-type Server struct {
+type server struct {
 	db          *sql.DB
 	root        string
 	currentDir  string
-	currentUser User
+	currentUser user
 	choices     []dirEntryWithTags
-	audioPlayer *AudioPlayer
+	audioPlayer *audioPlayer
 }
 
 // Construct the server
-func NewServer(audioPlayer *AudioPlayer) *Server {
+func newServer(audioPlayer *audioPlayer) *server {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
 	var samples = flag.String("samples", "~/Library/Audio/Sounds/Samples", "Root samples directory")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
@@ -448,7 +504,7 @@ func NewServer(audioPlayer *AudioPlayer) *Server {
 	} else {
 		log.Print("Database setup successfully.")
 	}
-	s := Server{
+	s := server{
 		db:          db,
 		root:        config.root,
 		currentDir:  config.root,
@@ -463,7 +519,7 @@ func NewServer(audioPlayer *AudioPlayer) *Server {
 	return &s
 }
 
-func (s *Server) _updateChoices() {
+func (s *server) _updateChoices() {
 	if s.currentDir != s.root {
 		s.choices = make([]dirEntryWithTags, 0)
 		dirEntries := s.listDirEntries()
@@ -474,55 +530,29 @@ func (s *Server) _updateChoices() {
 	}
 }
 
-func (s *Server) getWholeCurrentDir() string {
+func (s *server) getWholeCurrentDir() string {
 	return filepath.Join(s.root, s.currentDir)
 }
 
-func (s *Server) changeDir(dir string) {
+func (s *server) changeDir(dir string) {
 	log.Println("Changing to dir: ", dir)
 	s.currentDir = filepath.Join(s.currentDir, dir)
 	log.Println("Current dir: ", s.currentDir)
 	s._updateChoices()
 }
 
-func (s *Server) changeToRoot() {
+func (s *server) changeToRoot() {
 	s.currentDir = s.root
 	s._updateChoices()
 }
 
-func (s *Server) changeToParentDir() {
+func (s *server) changeToParentDir() {
 	log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
 	s.currentDir = filepath.Dir(s.currentDir)
 	s._updateChoices()
 }
 
-type collectionTag struct {
-	filePath       string
-	collectionName string
-	subCollection  string
-}
-
-type dirEntryWithTags struct {
-	path  string
-	tags  []collectionTag
-	isDir bool
-}
-
-func (d dirEntryWithTags) displayTags() string {
-	first := true
-	resp := ""
-	for _, tag := range d.tags {
-		if first {
-			resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
-			first = false
-		} else {
-			resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
-		}
-	}
-	return resp
-}
-
-func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
+func (s *server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	dirs := make([]os.DirEntry, 0)
 	files := make([]os.DirEntry, 0)
 	for _, entry := range entries {
@@ -541,7 +571,7 @@ func (s *Server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	return append(dirs, files...)
 }
 
-func (s *Server) listDirEntries() []dirEntryWithTags {
+func (s *server) listDirEntries() []dirEntryWithTags {
 	files, err := os.ReadDir(s.currentDir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
@@ -562,7 +592,8 @@ func (s *Server) listDirEntries() []dirEntryWithTags {
 	return samples
 }
 
-func (s *Server) getCollectionTags(root string, subDirectory *string) []collectionTag {
+// ////////////////////// DATABASE ENDPOINTS ////////////////////////
+func (s *server) getCollectionTags(root string, subDirectory *string) []collectionTag {
 	queryDir := root
 	if subDirectory != nil {
 		queryDir = filepath.Join(root, *subDirectory)
@@ -589,31 +620,26 @@ where t.file_path like '?%'`
 	return tags
 }
 
-type User struct {
-	id   int
-	name string
-}
-
-func (s *Server) getUsers() []User {
+func (s *server) getUsers() []user {
 	statement := `select id, name from User`
 	rows, err := s.db.Query(statement)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	users := make([]User, 0)
+	users := make([]user, 0)
 	for rows.Next() {
 		var id int
 		var name string
 		if err := rows.Scan(&id, &name); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		users = append(users, User{id: id, name: name})
+		users = append(users, user{id: id, name: name})
 	}
 	return users
 }
 
-func (s *Server) createUser(name string) int {
+func (s *server) createUser(name string) int {
 	res, err := s.db.Exec("insert ignore into User (name) values (?)", name)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -625,14 +651,14 @@ func (s *Server) createUser(name string) int {
 	return int(id)
 }
 
-func (s *Server) updateUsername(id int, name string) {
+func (s *server) updateUsername(id int, name string) {
 	_, err := s.db.Exec("update User set name = ? where id = ?", name, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 }
 
-func (s *Server) createCollection(name string, description *string) int {
+func (s *server) createCollection(name string, description *string) int {
 	var err error
 	var res sql.Result
 	if description == nil {
@@ -650,22 +676,22 @@ func (s *Server) createCollection(name string, description *string) int {
 	return int(id)
 }
 
-func (s *Server) updateCollectionName(id int, name string) {
+func (s *server) updateCollectionName(id int, name string) {
 	_, err := s.db.Exec("update Collection set name = ? where id = ?", name, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 }
 
-func (s *Server) updateCollectionDescription(id int, description string) {
+func (s *server) updateCollectionDescription(id int, description string) {
 	_, err := s.db.Exec("update Collection set description = ? where id = ?", description, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 }
 
-func (s *Server) createTag(filePath string) int {
-	res, err := s.db.Exec("insert ignore into Tag (file_path) values (?)", filePath)
+func (s *server) createTag(filePath string) int {
+	res, err := s.db.Exec("insert ignore into Tag (file_path, user_id) values (?)", filePath, s.currentUser.id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
@@ -676,7 +702,7 @@ func (s *Server) createTag(filePath string) int {
 	return int(id)
 }
 
-func (s *Server) addTagToCollection(tagId int, collectionId int, name string, subCollection *string) {
+func (s *server) addTagToCollection(tagId int, collectionId int, name string, subCollection *string) {
 	var err error
 	if subCollection == nil {
 		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id) values (?, ?)", tagId, collectionId)
@@ -688,27 +714,7 @@ func (s *Server) addTagToCollection(tagId int, collectionId int, name string, su
 	}
 }
 
-type App struct {
-	server         *Server
-	bubbleTeaModel model
-	logFile        *os.File
-}
-
-func NewApp() App {
-	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	log.SetOutput(f)
-	audioPlayer := NewAudioPlayer()
-	server := NewServer(audioPlayer)
-	return App{
-		server:         server,
-		bubbleTeaModel: initialModel(server),
-		logFile:        f,
-	}
-}
-
+// ////////////////////// AUDIO HANDLING ////////////////////////
 type audioFileType int
 
 const (
@@ -734,7 +740,7 @@ func (a *audioFileType) fromExtension(s string) {
 	}
 }
 
-type AudioPlayer struct {
+type audioPlayer struct {
 	format beep.Format
 	// Add a mutex for safe access to the currently playing streamer
 	mutex sync.Mutex
@@ -742,16 +748,14 @@ type AudioPlayer struct {
 	currentStreamer beep.StreamSeekCloser
 }
 
-func NewAudioPlayer() *AudioPlayer {
+func NewAudioPlayer() *audioPlayer {
 	sampleRate := beep.SampleRate(48000)
 	format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-	// speaker.Init(sampleRate, sampleRate.N(time.Second/10))
-	return &AudioPlayer{format: format}
-
+	return &audioPlayer{format: format}
 }
 
-func (a *AudioPlayer) Close() {
+func (a *audioPlayer) Close() {
 	speaker.Lock()
 	if a.currentStreamer != nil {
 		a.currentStreamer.Close()
@@ -760,7 +764,7 @@ func (a *AudioPlayer) Close() {
 	speaker.Close()
 }
 
-func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
+func (a *audioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
 	var err error
@@ -778,7 +782,7 @@ func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 	return streamer, format, nil
 }
 
-func (a *AudioPlayer) PlayAudioFile(path string) {
+func (a *audioPlayer) PlayAudioFile(path string) {
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
@@ -792,6 +796,28 @@ func (a *AudioPlayer) PlayAudioFile(path string) {
 		done <- true
 	})))
 	<-done
+}
+
+// ////////////////////// APP ////////////////////////
+type App struct {
+	server         *server
+	bubbleTeaModel model
+	logFile        *os.File
+}
+
+func NewApp() App {
+	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	log.SetOutput(f)
+	audioPlayer := NewAudioPlayer()
+	server := newServer(audioPlayer)
+	return App{
+		server:         server,
+		bubbleTeaModel: initialModel(server),
+		logFile:        f,
+	}
 }
 
 func main() {
