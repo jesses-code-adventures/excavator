@@ -75,19 +75,20 @@ func (k *keymapHacks) lastKeyWasG() bool {
 }
 
 type KeyMap struct {
-	Up            key.Binding
-	Down          key.Binding
-	Quit          key.Binding
-	JumpUp        key.Binding
-	JumpDown      key.Binding
-	JumpBottom    key.Binding
-	Audition      key.Binding
-	Enter         key.Binding
-	NewCollection key.Binding
+	Up               key.Binding
+	Down             key.Binding
+	Quit             key.Binding
+	JumpUp           key.Binding
+	JumpDown         key.Binding
+	JumpBottom       key.Binding
+	Audition         key.Binding
+	Enter            key.Binding
+	NewCollection    key.Binding
+	SelectCollection key.Binding
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.Up, k.Down, k.JumpUp, k.JumpDown, k.NewCollection}
+	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.NewCollection, k.SelectCollection}
 }
 
 // Short help only
@@ -134,6 +135,10 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("N"),
 		key.WithHelp("N", "new collection"),
 	),
+	SelectCollection: key.NewBinding(
+		key.WithKeys("C"),
+		key.WithHelp("C", "select collection"),
+	),
 }
 
 type model struct {
@@ -175,26 +180,35 @@ func (m model) headerView() string {
 
 // Get the footer of the view
 func (m model) footerView() string {
-	return m.help.View(m.keys)
+    helpText := m.help.View(m.keys)
+    termWidth := m.viewport.Width
+    helpTextLength := lipgloss.Width(helpText)
+    padding := (termWidth - helpTextLength) / 2
+    if padding < 0 {
+        padding = 0
+    }
+    paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
+    centeredHelpText := paddedHelpStyle.Render(helpText)
+    return centeredHelpText
 }
 
 type formInput struct {
-    name        string
-    input      textinput.Model
+	name  string
+	input textinput.Model
 }
 
 func newFormInput(name string) formInput {
-    return formInput{
-        name: name,
-        input: textinput.New(),
-    }
+	return formInput{
+		name:  name,
+		input: textinput.New(),
+	}
 }
 
 func getNewCollectionInputs() []formInput {
-    return []formInput{
-        newFormInput("Name"),
-        newFormInput("Description"),
-    }
+	return []formInput{
+		newFormInput("Name"),
+		newFormInput("Description"),
+	}
 }
 
 // Handle a single key press
@@ -241,31 +255,31 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 			m.inputs = make([]formInput, 0)
 		}
 	case key.Matches(msg, m.keys.Enter):
-        if m.inFormWindow {
-            if m.formFocus == len(m.inputs)-1 {
-                // Create the new collection
-                description := m.inputs[1].input.Value()
-                m.server.createCollection(m.inputs[0].input.Value(), &description)
-                m.inFormWindow = false
-            } else {
-                m.formFocus++
-            }
-        } else {
-            choice := m.server.choices[m.cursor]
-            if choice.isDir {
-                if choice.path == ".." {
-                    m.cursor = 0
-                    m.viewport.GotoTop()
-                    m.server.changeToParentDir()
-                } else {
-                    m.cursor = 0
-                    m.viewport.GotoTop()
-                    m.server.changeDir(choice.path)
-                }
-            } else {
-                m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
-            }
-        }
+		if m.inFormWindow {
+			if m.formFocus == len(m.inputs)-1 {
+				// Create the new collection
+				description := m.inputs[1].input.Value()
+				m.server.createCollection(m.inputs[0].input.Value(), &description)
+				m.inFormWindow = false
+			} else {
+				m.formFocus++
+			}
+		} else {
+			choice := m.server.choices[m.cursor]
+			if choice.isDir {
+				if choice.path == ".." {
+					m.cursor = 0
+					m.viewport.GotoTop()
+					m.server.changeToParentDir()
+				} else {
+					m.cursor = 0
+					m.viewport.GotoTop()
+					m.server.changeDir(choice.path)
+				}
+			} else {
+				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+			}
+		}
 	default:
 		switch msg.String() {
 		case "g":
@@ -618,7 +632,7 @@ func (s *Server) updateUsername(id int, name string) {
 	}
 }
 
-func (s *Server) createCollection(name string,description *string) int {
+func (s *Server) createCollection(name string, description *string) int {
 	var err error
 	var res sql.Result
 	if description == nil {
