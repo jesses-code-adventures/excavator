@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-    "github.com/jesses-code-adventures/excavator/src/utils"
+	"github.com/jesses-code-adventures/excavator/src/utils"
 
-    _ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/flac"
@@ -21,11 +21,13 @@ import (
 	"github.com/faiface/beep/speaker"
 	"github.com/faiface/beep/wav"
 
-    tea "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
+
+	// "github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -47,12 +49,12 @@ var (
 			Foreground(pink)
 	unselectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder())
-    bottomTextBoxesStyle = lipgloss.NewStyle().
-            BorderTop(true).
-            Height(8).
-            Width(255)
-    viewportStyle = lipgloss.NewStyle()
-            // Padding(1, 1).
+	bottomTextBoxesStyle = lipgloss.NewStyle().
+				BorderTop(true).
+				Height(8).
+				Width(255)
+	viewportStyle = lipgloss.NewStyle()
+	// Padding(1, 1).
 )
 
 // I know this is bad but i want gg
@@ -129,22 +131,24 @@ var DefaultKeyMap = KeyMap{
 		key.WithHelp("a", "audition sample"),
 	),
 	NewCollection: key.NewBinding(
-		key.WithKeys("C"),
-		key.WithHelp("C", "new collection"),
+		key.WithKeys("N"),
+		key.WithHelp("N", "new collection"),
 	),
 }
 
 type model struct {
-	ready                  bool
-	quitting               bool
-	cursor                 int
-	keys                   KeyMap
-	keyHack                keymapHacks
-	server                 *Server
-	viewport               viewport.Model
-	help                   help.Model
-	bottomTextInputs       []textinput.Model
-	focusedBottomTextInput int
+	ready        bool
+	quitting     bool
+	inFormWindow bool
+	cursor       int
+	prevCursor   int
+	formFocus    int
+	keys         KeyMap
+	keyHack      keymapHacks
+	server       *Server
+	viewport     viewport.Model
+	help         help.Model
+	inputs       []formInput
 }
 
 func initialModel(server *Server) model {
@@ -174,8 +178,23 @@ func (m model) footerView() string {
 	return m.help.View(m.keys)
 }
 
-func (m model) ClearBottomTextInputs() {
-	m.bottomTextInputs = make([]textinput.Model, 0)
+type formInput struct {
+    name        string
+    input      textinput.Model
+}
+
+func newFormInput(name string) formInput {
+    return formInput{
+        name: name,
+        input: textinput.New(),
+    }
+}
+
+func getNewCollectionInputs() []formInput {
+    return []formInput{
+        newFormInput("Name"),
+        newFormInput("Description"),
+    }
 }
 
 // Handle a single key press
@@ -212,28 +231,41 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
-    case key.Matches(msg, m.keys.NewCollection):
-        if len(m.bottomTextInputs) > 0 {
-            m.ClearBottomTextInputs()
-        } else {
-            m.viewport.Height -= 8
-            m.bottomTextInputs = append(m.bottomTextInputs, textinput.New())
-        }
-	case key.Matches(msg, m.keys.Enter):
-		choice := m.server.choices[m.cursor]
-		if choice.isDir {
-			if choice.path == ".." {
-				m.cursor = 0
-                m.viewport.GotoTop()
-				m.server.changeToParentDir()
-			} else {
-				m.cursor = 0
-                m.viewport.GotoTop()
-				m.server.changeDir(choice.path)
-			}
+	case key.Matches(msg, m.keys.NewCollection):
+		if !m.inFormWindow {
+			m.inFormWindow = true
+			m.inputs = append(m.inputs, getNewCollectionInputs()...)
+			m.formFocus = 0
 		} else {
-			m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+			m.inFormWindow = false
+			m.inputs = make([]formInput, 0)
 		}
+	case key.Matches(msg, m.keys.Enter):
+        if m.inFormWindow {
+            if m.formFocus == len(m.inputs)-1 {
+                // Create the new collection
+                description := m.inputs[1].input.Value()
+                m.server.createCollection(m.inputs[0].input.Value(), &description)
+                m.inFormWindow = false
+            } else {
+                m.formFocus++
+            }
+        } else {
+            choice := m.server.choices[m.cursor]
+            if choice.isDir {
+                if choice.path == ".." {
+                    m.cursor = 0
+                    m.viewport.GotoTop()
+                    m.server.changeToParentDir()
+                } else {
+                    m.cursor = 0
+                    m.viewport.GotoTop()
+                    m.server.changeDir(choice.path)
+                }
+            } else {
+                m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+            }
+        }
 	default:
 		switch msg.String() {
 		case "g":
@@ -270,20 +302,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.keyHack.updateLastKey(msg.String())
 	}
+	if m.inFormWindow {
+		for i, input := range m.inputs {
+			var newInput textinput.Model
+			newInput, cmd = input.input.Update(msg)
+			m.inputs[i].input = newInput
+			if i == m.formFocus {
+				m.inputs[i].input.Focus()
+			}
+		}
+	}
 	m.viewport.SetContent(m.getContent())
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
 
 func (m model) getContent() string {
-	s := ""
-	for i, choice := range m.server.choices {
-		if m.cursor == i {
-			cursor := "-->"
-			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
-		} else {
-			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
+	if m.inFormWindow {
+		return m.formView()
+	} else {
+		s := ""
+		for i, choice := range m.server.choices {
+			if m.cursor == i {
+				cursor := "-->"
+				s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
+			} else {
+				s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
+			}
 		}
+		return s
+	}
+}
+
+func (m model) formView() string {
+	s := ""
+	for _, input := range m.inputs {
+		s += fmt.Sprintf("%v: %v\n", input.name, input.input.View())
 	}
 	return s
 }
@@ -292,16 +346,7 @@ func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
-	bottomTextRender := ""
-	if len(m.bottomTextInputs) > 0 {
-		for i, textInput := range m.bottomTextInputs {
-			if i != len(m.bottomTextInputs)-1 {
-				bottomTextRender += "\n"
-			}
-			bottomTextRender += bottomTextBoxesStyle.Render(fmt.Sprintf("%v: %v", i, textInput.View()))
-		}
-	}
-	return appStyle.Render(fmt.Sprintf("%s\n%s%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), bottomTextRender, m.footerView()))
+	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 }
 
 //////////////////////// SERVER ////////////////////////
@@ -568,6 +613,62 @@ func (s *Server) createUser(name string) int {
 
 func (s *Server) updateUsername(id int, name string) {
 	_, err := s.db.Exec("update User set name = ? where id = ?", name, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+}
+
+func (s *Server) createCollection(name string,description *string) int {
+	var err error
+	var res sql.Result
+	if description == nil {
+		res, err = s.db.Exec("insert into Collection (name, user_id) values (?, ?)", name, s.currentUser.id)
+	} else {
+		res, err = s.db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.currentUser.id, *description)
+	}
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		log.Fatalf("Failed to get last insert ID: %v", err)
+	}
+	return int(id)
+}
+
+func (s *Server) updateCollectionName(id int, name string) {
+	_, err := s.db.Exec("update Collection set name = ? where id = ?", name, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+}
+
+func (s *Server) updateCollectionDescription(id int, description string) {
+	_, err := s.db.Exec("update Collection set description = ? where id = ?", description, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+}
+
+func (s *Server) createTag(filePath string) int {
+	res, err := s.db.Exec("insert ignore into Tag (file_path) values (?)", filePath)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		log.Fatalf("Failed to get last insert ID: %v", err)
+	}
+	return int(id)
+}
+
+func (s *Server) addTagToCollection(tagId int, collectionId int, name string, subCollection *string) {
+	var err error
+	if subCollection == nil {
+		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id) values (?, ?)", tagId, collectionId)
+	} else {
+		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id, sub_collection) values (?, ?, ?)", tagId, collectionId, *subCollection)
+	}
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}

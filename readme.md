@@ -35,7 +35,9 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
 - [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
 - [ ] press shift-A to toggle auto-audition mode.
-- [ ] press shift-N to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
+- [x] press shift-N to create a new collection
+- [ ] press shift-C to change the target collection
+- [ ] press shift-D to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
 - [ ] press shift-T to change the target collection when browsing samples.
 - [ ] press shift-E to collection the current target collection to its output directory (should just replace the whole directory destructively at first).

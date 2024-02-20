@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS Collection (
 
 CREATE TABLE IF NOT EXISTS Tag (
     id INTEGER PRIMARY KEY,
-    file_path TEXT UNIQUE NOT NULL
+    user_id INTEGER NOT NULL,
+    file_path TEXT UNIQUE NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES User(id)
 );
 
 CREATE TABLE IF NOT EXISTS CollectionTag (
