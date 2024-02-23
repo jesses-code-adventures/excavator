@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+	// "sync"
 	"time"
 
 	"github.com/jesses-code-adventures/excavator/src/utils"
@@ -58,16 +58,18 @@ var (
 	unfocusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Background(lipgloss.Color("236")).
-			Margin(2, 1).
+			Width(100).
+			Margin(1, 1).
 			Border(lipgloss.HiddenBorder())
 	focusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
-			Margin(2, 1).
+			Width(100).
+			Margin(1, 1).
 			Background(lipgloss.Color("236"))
 	formStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Border(lipgloss.RoundedBorder()).
-			Margin(2, 1, 0)
+			Margin(0, 0, 0)
 )
 
 // Standard inputs to be used for all forms
@@ -118,6 +120,7 @@ type KeyMap struct {
 	Enter            key.Binding
 	NewCollection    key.Binding
 	SelectCollection key.Binding
+	InsertMode       key.Binding
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
@@ -160,6 +163,10 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "select"),
 	),
+	InsertMode: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "text insert mode"),
+	),
 	Audition: key.NewBinding(
 		key.WithKeys("a"),
 		key.WithHelp("a", "audition sample"),
@@ -174,19 +181,35 @@ var DefaultKeyMap = KeyMap{
 	),
 }
 
-type model struct {
-	ready        bool
-	quitting     bool
-	inFormWindow bool
-	cursor       int
-	prevCursor   int
-	formFocus    int
-	keys         KeyMap
-	keyHack      keymapHacks
-	server       *server
-	viewport     viewport.Model
-	help         help.Model
+type form struct {
+	title        string
 	inputs       []formInput
+	focused      bool
+	writing      bool
+	focusedInput int
+}
+
+func newForm(title string, inputs []formInput) form {
+	return form{
+		title:        title,
+		inputs:       inputs,
+		focused:      false,
+		writing:      false,
+		focusedInput: 0,
+	}
+}
+
+type model struct {
+	ready      bool
+	quitting   bool
+	cursor     int
+	prevCursor int
+	keys       KeyMap
+	keyHack    keymapHacks
+	server     *server
+	viewport   viewport.Model
+	help       help.Model
+	form       form
 }
 
 func initialModel(server *server) model {
@@ -220,6 +243,68 @@ func (m model) footerView() string {
 	return centeredHelpText
 }
 
+func (m model) handleInFormKey(msg tea.Msg) (model, tea.Cmd) {
+	if m.form.writing {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch {
+			case key.Matches(msg, m.keys.Quit):
+				m.form.writing = false
+				m.form.inputs[m.form.focusedInput].input.Blur()
+			case key.Matches(msg, m.keys.Enter):
+				m.form.writing = false
+				m.form.inputs[m.form.focusedInput].input.Blur()
+			default:
+				var newInput textinput.Model
+				var cmd tea.Cmd
+				newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
+				m.form.inputs[m.form.focusedInput].input = newInput
+				m.form.inputs[m.form.focusedInput].input.Focus()
+				return m, cmd
+			}
+		}
+	} else {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch {
+			case key.Matches(msg, m.keys.Up):
+				m.form.inputs[m.form.focusedInput].input.Blur()
+				m.form.focusedInput++
+				if m.form.focusedInput >= len(m.form.inputs) {
+					m.form.focusedInput = 0
+				}
+				m.form.inputs[m.form.focusedInput].input.Focus()
+			case key.Matches(msg, m.keys.Down):
+				m.form.inputs[m.form.focusedInput].input.Blur()
+				m.form.focusedInput--
+				if m.form.focusedInput < 0 {
+					m.form.focusedInput = len(m.form.inputs) - 1
+				}
+				m.form.inputs[m.form.focusedInput].input.Focus()
+			case key.Matches(msg, m.keys.InsertMode):
+				m.form.inputs[m.form.focusedInput].input.Blur()
+				m.form.writing = true
+				m.form.inputs[m.form.focusedInput].input.Focus()
+			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
+				m.form.focused = false
+				m.form.inputs = make([]formInput, 0)
+				m.server._updateChoices()
+			case key.Matches(msg, m.keys.Enter):
+				for i, input := range m.form.inputs {
+					if input.input.Value() == "" {
+						m.form.focusedInput = i
+						m.form.inputs[i].input.Focus()
+						break
+					}
+				}
+				m.server.createCollection(m.form.inputs[0].input.Value(), nil)
+				m.form.focused = false
+			}
+		}
+	}
+	return m, nil
+}
+
 // Handle a single key press
 func (m model) handleKey(msg tea.KeyMsg) model {
 	switch {
@@ -249,29 +334,28 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 	case key.Matches(msg, m.keys.Audition):
 		choice := m.server.choices[m.cursor]
 		if !choice.isDir {
-			m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+			go m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
 	case key.Matches(msg, m.keys.NewCollection):
-		if !m.inFormWindow {
-			m.inFormWindow = true
-			m.inputs = append(m.inputs, getNewCollectionInputs()...)
-			m.formFocus = 0
+		if !m.form.focused {
+			m.form = newForm("New Collection", getNewCollectionInputs())
+			m.form.focused = true
 		} else {
-			m.inFormWindow = false
-			m.inputs = make([]formInput, 0)
+			m.form.focused = false
+			m.form.inputs = make([]formInput, 0)
 		}
 	case key.Matches(msg, m.keys.Enter):
-		if m.inFormWindow {
-			if m.formFocus == len(m.inputs)-1 {
+		if m.form.focused {
+			if m.form.focusedInput == len(m.form.inputs)-1 {
 				// Create the new collection
-				description := m.inputs[1].input.Value()
-				m.server.createCollection(m.inputs[0].input.Value(), &description)
-				m.inFormWindow = false
+				description := m.form.inputs[1].input.Value()
+				m.server.createCollection(m.form.inputs[0].input.Value(), &description)
+				m.form.focused = false
 			} else {
-				m.formFocus++
+				m.form.focusedInput++
 			}
 		} else {
 			choice := m.server.choices[m.cursor]
@@ -303,12 +387,12 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 
 // Formview handler
 func (m model) formView() string {
-	if !m.inFormWindow {
+	if !m.form.focused {
 		return ""
 	}
 	s := ""
-	for i, input := range m.inputs {
-		if m.formFocus == i {
+	for i, input := range m.form.inputs {
+		if m.form.focusedInput == i {
 			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
 		} else {
 			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
@@ -353,35 +437,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Height = msg.Height - verticalMarginHeight
 		}
 	case tea.KeyMsg:
-		m = m.handleKey(msg)
-		if m.quitting {
-			return m, tea.Quit
-		}
-		m.keyHack.updateLastKey(msg.String())
-	}
-	if m.inFormWindow {
-		for i, input := range m.inputs {
-			if i == m.formFocus {
-				var newInput textinput.Model
-				newInput, cmd = input.input.Update(msg)
-				m.inputs[i].input = newInput
-				m.inputs[i].input.Focus()
+		// Making this a switch so it's easy if we change to more window types later
+		switch m.form.focused {
+		case true:
+			m, cmd = m.handleInFormKey(msg)
+		case false:
+			m = m.handleKey(msg)
+			if m.quitting {
+				return m, tea.Quit
 			}
+			m.keyHack.updateLastKey(msg.String())
 		}
 	}
-    switch m.inFormWindow {
-    case true:
-        m.viewport.SetContent(m.formView())
-    case false:
-        m.viewport.SetContent(m.getContent())
-        m.viewport, cmd = m.viewport.Update(msg)
-    }
+	switch m.form.focused {
+	case true:
+		m.viewport.SetContent(m.formView())
+	case false:
+		m.viewport.SetContent(m.getContent())
+	}
+	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
 
 func (m model) View() string {
 	if m.quitting {
 		return ""
+	}
+	if m.form.focused {
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
 	}
 	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 }
@@ -476,11 +559,11 @@ type server struct {
 	currentDir  string
 	currentUser user
 	choices     []dirEntryWithTags
-	audioPlayer *audioPlayer
+	audioPlayer *AudioPlayer
 }
 
 // Construct the server
-func newServer(audioPlayer *audioPlayer) *server {
+func newServer(audioPlayer *AudioPlayer) *server {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
 	var samples = flag.String("samples", "~/Library/Audio/Sounds/Samples", "Root samples directory")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
@@ -525,6 +608,7 @@ func (s *server) _updateChoices() {
 		dirEntries := s.listDirEntries()
 		s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
 		s.choices = append(s.choices, dirEntries...)
+		log.Println("Choices: ", s.choices)
 	} else {
 		s.choices = s.listDirEntries()
 	}
@@ -740,22 +824,34 @@ func (a *audioFileType) fromExtension(s string) {
 	}
 }
 
-type audioPlayer struct {
-	format beep.Format
-	// Add a mutex for safe access to the currently playing streamer
-	mutex sync.Mutex
-	// Track the current playing streamer for stopping if needed
+type AudioPlayer struct {
+	format          beep.Format
 	currentStreamer beep.StreamSeekCloser
+	commands        chan string
+	playing         bool
 }
 
-func NewAudioPlayer() *audioPlayer {
+func (a *AudioPlayer) pushPlayCommand(path string) {
+	log.Println("Pushing play command", path)
+	a.commands <- path
+}
+
+func NewAudioPlayer() *AudioPlayer {
 	sampleRate := beep.SampleRate(48000)
 	format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-	return &audioPlayer{format: format}
+	player := AudioPlayer{
+		format:   format,
+		playing:  false,
+		commands: make(chan string),
+	}
+    speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	go func() {
+		player.Run()
+	}()
+	return &player
 }
 
-func (a *audioPlayer) Close() {
+func (a *AudioPlayer) Close() {
 	speaker.Lock()
 	if a.currentStreamer != nil {
 		a.currentStreamer.Close()
@@ -764,7 +860,7 @@ func (a *audioPlayer) Close() {
 	speaker.Close()
 }
 
-func (a *audioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
+func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
 	var err error
@@ -782,20 +878,51 @@ func (a *audioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 	return streamer, format, nil
 }
 
-func (a *audioPlayer) PlayAudioFile(path string) {
+func (a *AudioPlayer) CloseStreamer() {
+    if a.currentStreamer != nil {
+        a.currentStreamer.Close()
+    }
+    a.currentStreamer = nil
+}
+
+func (a *AudioPlayer) handlePlayCommnad(path string) {
+	log.Println("Handling play command", path)
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
-	done := make(chan bool)
+	a.playing = true
 	streamer, format, err := a.GetStreamer(path, f)
-	defer streamer.Close()
+	a.currentStreamer = streamer
 	resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
-	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
-		done <- true
-	})))
-	<-done
+    done := make(chan bool)
+    defer a.CloseStreamer()
+    speaker.Play(beep.Seq(resampled, beep.Callback(func() {
+        a.playing = false
+        log.Println("Finished playing audio")
+        done <- true
+    })))
+    <-done
+}
+
+func (a *AudioPlayer) Run() {
+	for {
+		select {
+		case path := <-a.commands:
+			log.Println("In Run, received play command", path)
+			a.handlePlayCommnad(path)
+		}
+	}
+
+}
+
+func (a *AudioPlayer) PlayAudioFile(path string) {
+	if a.playing {
+		// Close current streamer with any necessary cleanup
+        a.CloseStreamer()
+	}
+	a.pushPlayCommand(path)
 }
 
 // ////////////////////// APP ////////////////////////
