@@ -873,7 +873,8 @@ func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 		streamer, format, err = flac.Decode(f)
 	}
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+        return nil, format, err
 	}
 	return streamer, format, nil
 }
@@ -894,10 +895,14 @@ func (a *AudioPlayer) handlePlayCommnad(path string) {
 	defer f.Close()
 	a.playing = true
 	streamer, format, err := a.GetStreamer(path, f)
+    if err != nil {
+        return
+    }
+    log.Printf("Playing file: \n--> path %s\n--> format%v", path, format)
 	a.currentStreamer = streamer
+    defer a.CloseStreamer()
 	resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
     done := make(chan bool)
-    defer a.CloseStreamer()
     speaker.Play(beep.Seq(resampled, beep.Callback(func() {
         a.playing = false
         log.Println("Finished playing audio")
