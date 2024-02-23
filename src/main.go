@@ -33,65 +33,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-//////////////////////// UI ////////////////////////
-
-var (
-	green    = lipgloss.Color("#25A065")
-	pink     = lipgloss.Color("#E441B5")
-	white    = lipgloss.Color("#FFFDF5")
-	appStyle = lipgloss.NewStyle().
-			Padding(1, 1)
-	titleStyle = lipgloss.NewStyle().
-			Foreground(white).
-			Background(green).
-			Padding(1, 1)
-	selectedStyle = lipgloss.NewStyle().
-			Border(lipgloss.HiddenBorder()).
-			Foreground(pink)
-	unselectedStyle = lipgloss.NewStyle().
-			Border(lipgloss.HiddenBorder())
-	bottomTextBoxesStyle = lipgloss.NewStyle().
-				BorderTop(true).
-				Height(8).
-				Width(255)
-	viewportStyle  = lipgloss.NewStyle()
-	unfocusedInput = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Background(lipgloss.Color("236")).
-			Width(100).
-			Margin(1, 1).
-			Border(lipgloss.HiddenBorder())
-	focusedInput = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Width(100).
-			Margin(1, 1).
-			Background(lipgloss.Color("236"))
-	formStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Border(lipgloss.RoundedBorder()).
-			Margin(0, 0, 0)
-)
-
-// Standard inputs to be used for all forms
-type formInput struct {
-	name  string
-	input textinput.Model
-}
-
-func newFormInput(name string) formInput {
-	return formInput{
-		name:  name,
-		input: textinput.New(),
-	}
-}
-
-func getNewCollectionInputs() []formInput {
-	return []formInput{
-		newFormInput("Name"),
-		newFormInput("Description"),
-	}
-}
-
+//////////////////////// KEYMAPS ////////////////////////
 // I know this is bad but i want gg
 type keymapHacks struct {
 	lastKey string
@@ -144,7 +86,7 @@ var DefaultKeyMap = KeyMap{
 		key.WithHelp("↓/j", "move down"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
+		key.WithKeys("q", "ctrl+c", "esc"),
 		key.WithHelp("q", "quit"),
 	),
 	JumpUp: key.NewBinding(
@@ -181,10 +123,68 @@ var DefaultKeyMap = KeyMap{
 	),
 }
 
+//////////////////////// UI ////////////////////////
+var (
+	green    = lipgloss.Color("#25A065")
+	pink     = lipgloss.Color("#E441B5")
+	white    = lipgloss.Color("#FFFDF5")
+	appStyle = lipgloss.NewStyle().
+			Padding(1, 1)
+	titleStyle = lipgloss.NewStyle().
+			Foreground(white).
+			Background(green).
+			Padding(1, 1)
+	selectedStyle = lipgloss.NewStyle().
+			Border(lipgloss.HiddenBorder()).
+			Foreground(pink)
+	unselectedStyle = lipgloss.NewStyle().
+			Border(lipgloss.HiddenBorder())
+	bottomTextBoxesStyle = lipgloss.NewStyle().
+				BorderTop(true).
+				Height(8).
+				Width(255)
+	viewportStyle  = lipgloss.NewStyle()
+	unfocusedInput = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Background(lipgloss.Color("236")).
+			Width(100).
+			Margin(1, 1).
+			Border(lipgloss.HiddenBorder())
+	focusedInput = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Width(100).
+			Margin(1, 1).
+			Background(lipgloss.Color("236"))
+	formStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Border(lipgloss.RoundedBorder()).
+			Margin(0, 0, 0)
+)
+
+// Standard inputs to be used for all forms
+type formInput struct {
+	name  string
+	input textinput.Model
+}
+
+func newFormInput(name string) formInput {
+	return formInput{
+		name:  name,
+		input: textinput.New(),
+	}
+}
+
+func getNewCollectionInputs() []formInput {
+	return []formInput{
+		newFormInput("name"),
+		newFormInput("description"),
+	}
+}
+
+
 type form struct {
 	title        string
 	inputs       []formInput
-	focused      bool
 	writing      bool
 	focusedInput int
 }
@@ -193,7 +193,6 @@ func newForm(title string, inputs []formInput) form {
 	return form{
 		title:        title,
 		inputs:       inputs,
-		focused:      false,
 		writing:      false,
 		focusedInput: 0,
 	}
@@ -210,7 +209,16 @@ type model struct {
 	viewport   viewport.Model
 	help       help.Model
 	form       form
+	windowType windowType
 }
+
+type windowType int
+
+const (
+	ContentWindow windowType = iota
+	FormWindow
+	// ListSelectionWindow
+)
 
 func initialModel(server *server) model {
 	return model{
@@ -243,70 +251,76 @@ func (m model) footerView() string {
 	return centeredHelpText
 }
 
-func (m model) handleInFormKey(msg tea.Msg) (model, tea.Cmd) {
-	if m.form.writing {
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch {
-			case key.Matches(msg, m.keys.Quit):
-				m.form.writing = false
-				m.form.inputs[m.form.focusedInput].input.Blur()
-			case key.Matches(msg, m.keys.Enter):
-				m.form.writing = false
-				m.form.inputs[m.form.focusedInput].input.Blur()
-			default:
-				var newInput textinput.Model
-				var cmd tea.Cmd
-				newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
-				m.form.inputs[m.form.focusedInput].input = newInput
-				m.form.inputs[m.form.focusedInput].input.Focus()
-				return m, cmd
+func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.form.inputs[m.form.focusedInput].input.Blur()
+		m.form.focusedInput++
+		if m.form.focusedInput >= len(m.form.inputs) {
+			m.form.focusedInput = 0
+		}
+		m.form.inputs[m.form.focusedInput].input.Focus()
+	case key.Matches(msg, m.keys.Down):
+		m.form.inputs[m.form.focusedInput].input.Blur()
+		m.form.focusedInput--
+		if m.form.focusedInput < 0 {
+			m.form.focusedInput = len(m.form.inputs) - 1
+		}
+		m.form.inputs[m.form.focusedInput].input.Focus()
+	case key.Matches(msg, m.keys.InsertMode):
+		m.form.inputs[m.form.focusedInput].input.Blur()
+		m.form.writing = true
+		m.form.inputs[m.form.focusedInput].input.Focus()
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
+		m.windowType = ContentWindow
+		m.form.inputs = make([]formInput, 0)
+		m.server._updateChoices()
+	case key.Matches(msg, m.keys.Enter):
+		for i, input := range m.form.inputs {
+			if input.input.Value() == "" {
+				m.form.focusedInput = i
+				m.form.inputs[i].input.Focus()
+				break
 			}
 		}
-	} else {
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch {
-			case key.Matches(msg, m.keys.Up):
-				m.form.inputs[m.form.focusedInput].input.Blur()
-				m.form.focusedInput++
-				if m.form.focusedInput >= len(m.form.inputs) {
-					m.form.focusedInput = 0
-				}
-				m.form.inputs[m.form.focusedInput].input.Focus()
-			case key.Matches(msg, m.keys.Down):
-				m.form.inputs[m.form.focusedInput].input.Blur()
-				m.form.focusedInput--
-				if m.form.focusedInput < 0 {
-					m.form.focusedInput = len(m.form.inputs) - 1
-				}
-				m.form.inputs[m.form.focusedInput].input.Focus()
-			case key.Matches(msg, m.keys.InsertMode):
-				m.form.inputs[m.form.focusedInput].input.Blur()
-				m.form.writing = true
-				m.form.inputs[m.form.focusedInput].input.Focus()
-			case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
-				m.form.focused = false
-				m.form.inputs = make([]formInput, 0)
-				m.server._updateChoices()
-			case key.Matches(msg, m.keys.Enter):
-				for i, input := range m.form.inputs {
-					if input.input.Value() == "" {
-						m.form.focusedInput = i
-						m.form.inputs[i].input.Focus()
-						break
-					}
-				}
-				m.server.createCollection(m.form.inputs[0].input.Value(), nil)
-				m.form.focused = false
-			}
+		switch m.form.title {
+		case "create collection":
+			m.server.createCollection(m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+			m.form.inputs = make([]formInput, 0)
+			m.windowType = ContentWindow
 		}
 	}
-	return m, nil
+	return m, cmd
+}
+
+func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		m.form.writing = false
+		m.form.inputs[m.form.focusedInput].input.Blur()
+	case key.Matches(msg, m.keys.Enter):
+		m.form.writing = false
+		m.form.inputs[m.form.focusedInput].input.Blur()
+	default:
+		var newInput textinput.Model
+		newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
+		m.form.inputs[m.form.focusedInput].input = newInput
+		m.form.inputs[m.form.focusedInput].input.Focus()
+	}
+	return m, cmd
+}
+
+func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	if m.form.writing {
+		m, cmd = m.handleFormWritingKey(msg, cmd)
+	} else {
+		m, cmd = m.handleFormNavigationKey(msg, cmd)
+	}
+	return m, cmd
 }
 
 // Handle a single key press
-func (m model) handleKey(msg tea.KeyMsg) model {
+func (m model) handleContentKey(msg tea.KeyMsg) model {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		m.quitting = true
@@ -340,38 +354,22 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
 	case key.Matches(msg, m.keys.NewCollection):
-		if !m.form.focused {
-			m.form = newForm("New Collection", getNewCollectionInputs())
-			m.form.focused = true
-		} else {
-			m.form.focused = false
-			m.form.inputs = make([]formInput, 0)
-		}
+		m.form = newForm("create collection", getNewCollectionInputs())
+		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Enter):
-		if m.form.focused {
-			if m.form.focusedInput == len(m.form.inputs)-1 {
-				// Create the new collection
-				description := m.form.inputs[1].input.Value()
-				m.server.createCollection(m.form.inputs[0].input.Value(), &description)
-				m.form.focused = false
+		choice := m.server.choices[m.cursor]
+		if choice.isDir {
+			if choice.path == ".." {
+				m.cursor = 0
+				m.viewport.GotoTop()
+				m.server.changeToParentDir()
 			} else {
-				m.form.focusedInput++
+				m.cursor = 0
+				m.viewport.GotoTop()
+				m.server.changeDir(choice.path)
 			}
 		} else {
-			choice := m.server.choices[m.cursor]
-			if choice.isDir {
-				if choice.path == ".." {
-					m.cursor = 0
-					m.viewport.GotoTop()
-					m.server.changeToParentDir()
-				} else {
-					m.cursor = 0
-					m.viewport.GotoTop()
-					m.server.changeDir(choice.path)
-				}
-			} else {
-				m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
-			}
+			m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 		}
 	default:
 		switch msg.String() {
@@ -387,9 +385,6 @@ func (m model) handleKey(msg tea.KeyMsg) model {
 
 // Formview handler
 func (m model) formView() string {
-	if !m.form.focused {
-		return ""
-	}
 	s := ""
 	for i, input := range m.form.inputs {
 		if m.form.focusedInput == i {
@@ -419,54 +414,70 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
+	headerHeight := lipgloss.Height(m.headerView())
+	footerHeight := lipgloss.Height(m.footerView())
+	verticalMarginHeight := headerHeight + footerHeight
+	if !m.ready {
+		// Handles waiting for the window to instantiate so the viewport can be created
+		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
+		m.viewport.SetContent(m.getContent())
+		m.ready = true
+	} else {
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - verticalMarginHeight
+	}
+	return m
+}
+
+func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch m.windowType {
+	case FormWindow:
+		m.viewport.SetContent(m.formView())
+	case ContentWindow:
+		m.viewport.SetContent(m.getContent())
+	default:
+		m.viewport.SetContent("Invalid window type")
+	}
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
 // Takes a message and updates the model
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		headerHeight := lipgloss.Height(m.headerView())
-		footerHeight := lipgloss.Height(m.footerView())
-		verticalMarginHeight := headerHeight + footerHeight
-		if !m.ready {
-			// Handles waiting for the window to instantiate so the viewport can be created
-			m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
-			m.viewport.SetContent(m.getContent())
-			m.ready = true
-		} else {
-			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - verticalMarginHeight
-		}
+		m = m.handleWindowResize(msg)
 	case tea.KeyMsg:
 		// Making this a switch so it's easy if we change to more window types later
-		switch m.form.focused {
-		case true:
-			m, cmd = m.handleInFormKey(msg)
-		case false:
-			m = m.handleKey(msg)
+		switch m.windowType {
+		case FormWindow:
+			m, cmd = m.handleFormKey(msg, cmd)
+		case ContentWindow:
+			m = m.handleContentKey(msg)
 			if m.quitting {
 				return m, tea.Quit
 			}
-			m.keyHack.updateLastKey(msg.String())
 		}
+		m.keyHack.updateLastKey(msg.String())
 	}
-	switch m.form.focused {
-	case true:
-		m.viewport.SetContent(m.formView())
-	case false:
-		m.viewport.SetContent(m.getContent())
-	}
-	m.viewport, cmd = m.viewport.Update(msg)
-	return m, cmd
+	return m.setViewportContent(msg, cmd)
 }
 
 func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
-	if m.form.focused {
+	switch m.windowType {
+	case FormWindow:
 		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
+	case ContentWindow:
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	default:
+		return "Invalid window type"
 	}
-	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 }
 
 //////////////////////// LOCAL SERVER ////////////////////////
@@ -742,14 +753,10 @@ func (s *server) updateUsername(id int, name string) {
 	}
 }
 
-func (s *server) createCollection(name string, description *string) int {
+func (s *server) createCollection(name string, description string) int {
 	var err error
 	var res sql.Result
-	if description == nil {
-		res, err = s.db.Exec("insert into Collection (name, user_id) values (?, ?)", name, s.currentUser.id)
-	} else {
-		res, err = s.db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.currentUser.id, *description)
-	}
+	res, err = s.db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.currentUser.id, description)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
@@ -844,7 +851,7 @@ func NewAudioPlayer() *AudioPlayer {
 		playing:  false,
 		commands: make(chan string),
 	}
-    speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 	go func() {
 		player.Run()
 	}()
@@ -874,16 +881,16 @@ func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 	}
 	if err != nil {
 		log.Print(err)
-        return nil, format, err
+		return nil, format, err
 	}
 	return streamer, format, nil
 }
 
 func (a *AudioPlayer) CloseStreamer() {
-    if a.currentStreamer != nil {
-        a.currentStreamer.Close()
-    }
-    a.currentStreamer = nil
+	if a.currentStreamer != nil {
+		a.currentStreamer.Close()
+	}
+	a.currentStreamer = nil
 }
 
 func (a *AudioPlayer) handlePlayCommnad(path string) {
@@ -895,20 +902,21 @@ func (a *AudioPlayer) handlePlayCommnad(path string) {
 	defer f.Close()
 	a.playing = true
 	streamer, format, err := a.GetStreamer(path, f)
-    if err != nil {
-        return
-    }
-    log.Printf("Playing file: \n--> path %s\n--> format%v", path, format)
+	if err != nil {
+		log.Printf("Failed to get streamer: %v", err)
+		return
+	}
+	log.Printf("Playing file: \n--> path %s\n--> format%v", path, format)
 	a.currentStreamer = streamer
-    defer a.CloseStreamer()
+	defer a.CloseStreamer()
 	resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
-    done := make(chan bool)
-    speaker.Play(beep.Seq(resampled, beep.Callback(func() {
-        a.playing = false
-        log.Println("Finished playing audio")
-        done <- true
-    })))
-    <-done
+	done := make(chan bool)
+	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
+		a.playing = false
+		log.Println("Finished playing audio")
+		done <- true
+	})))
+	<-done
 }
 
 func (a *AudioPlayer) Run() {
@@ -925,7 +933,7 @@ func (a *AudioPlayer) Run() {
 func (a *AudioPlayer) PlayAudioFile(path string) {
 	if a.playing {
 		// Close current streamer with any necessary cleanup
-        a.CloseStreamer()
+		a.CloseStreamer()
 	}
 	a.pushPlayCommand(path)
 }
