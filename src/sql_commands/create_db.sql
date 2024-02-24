@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS User (
     id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    selected_collection INTEGER,
+    FOREIGN KEY (selected_collection) REFERENCES Collection(id)
 );
 
 INSERT INTO User (name) VALUES ('jesse');

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	// "sync"
 	"time"
 
 	"github.com/jesses-code-adventures/excavator/src/utils"
@@ -33,7 +32,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-//////////////////////// KEYMAPS ////////////////////////
+// ////////////////////// KEYMAPS ////////////////////////
 // I know this is bad but i want gg
 type keymapHacks struct {
 	lastKey string
@@ -123,7 +122,7 @@ var DefaultKeyMap = KeyMap{
 	),
 }
 
-//////////////////////// UI ////////////////////////
+// ////////////////////// UI ////////////////////////
 var (
 	green    = lipgloss.Color("#25A065")
 	pink     = lipgloss.Color("#E441B5")
@@ -161,7 +160,7 @@ var (
 			Margin(0, 0, 0)
 )
 
-// Standard inputs to be used for all forms
+// / Form ///
 type formInput struct {
 	name  string
 	input textinput.Model
@@ -181,6 +180,9 @@ func getNewCollectionInputs() []formInput {
 	}
 }
 
+func getNewCollectionForm() form {
+	return newForm("create collection", getNewCollectionInputs())
+}
 
 type form struct {
 	title        string
@@ -198,26 +200,41 @@ func newForm(title string, inputs []formInput) form {
 	}
 }
 
+/// List selection ///
+
+type listSelectionItem interface {
+	Id() int
+	Name() string
+	Description() string
+}
+
+type listSelection struct {
+	title    string
+	items    []listSelectionItem
+	selected int
+}
+
 type model struct {
-	ready      bool
-	quitting   bool
-	cursor     int
-	prevCursor int
-	keys       KeyMap
-	keyHack    keymapHacks
-	server     *server
-	viewport   viewport.Model
-	help       help.Model
-	form       form
-	windowType windowType
+	ready         bool
+	quitting      bool
+	cursor        int
+	prevCursor    int
+	keys          KeyMap
+	keyHack       keymapHacks
+	server        *server
+	viewport      viewport.Model
+	help          help.Model
+	windowType    windowType
+	form          form
+	listSelection listSelection
 }
 
 type windowType int
 
 const (
-	ContentWindow windowType = iota
+	DirectoryWalker windowType = iota
 	FormWindow
-	// ListSelectionWindow
+	ListSelectionWindow
 )
 
 func initialModel(server *server) model {
@@ -251,6 +268,41 @@ func (m model) footerView() string {
 	return centeredHelpText
 }
 
+func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.listSelection.selected++
+		if m.listSelection.selected >= len(m.listSelection.items) {
+			m.listSelection.selected = 0
+		}
+	case key.Matches(msg, m.keys.Down):
+		m.listSelection.selected--
+		if m.listSelection.selected < 0 {
+			m.listSelection.selected = len(m.listSelection.items) - 1
+		}
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
+		m.windowType = FormWindow
+		m.listSelection.items = make([]listSelectionItem, 0)
+		m.form = getNewCollectionForm()
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
+		m.windowType = DirectoryWalker
+		m.listSelection.items = make([]listSelectionItem, 0)
+		m.server._updateChoices()
+	case key.Matches(msg, m.keys.Enter):
+		switch m.listSelection.title {
+		case "select collection":
+			if collection, ok := m.listSelection.items[m.listSelection.selected].(collection); ok {
+				m.server.updateSelectedCollection(collection)
+				m.listSelection.items = make([]listSelectionItem, 0)
+				m.windowType = DirectoryWalker
+			} else {
+				log.Fatalf("Invalid list selection item type")
+			}
+		}
+	}
+	return m, cmd
+}
+
 func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Up):
@@ -272,9 +324,16 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 		m.form.writing = true
 		m.form.inputs[m.form.focusedInput].input.Focus()
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
-		m.windowType = ContentWindow
+		m.windowType = DirectoryWalker
 		m.form.inputs = make([]formInput, 0)
 		m.server._updateChoices()
+	case key.Matches(msg, m.keys.SelectCollection):
+		collections := m.server.getCollections()
+		m.listSelection = listSelection{title: "select collection", items: make([]listSelectionItem, 0), selected: 0}
+		for _, collection := range collections {
+			m.listSelection.items = append(m.listSelection.items, collection)
+		}
+		m.windowType = ListSelectionWindow
 	case key.Matches(msg, m.keys.Enter):
 		for i, input := range m.form.inputs {
 			if input.input.Value() == "" {
@@ -287,7 +346,7 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 		case "create collection":
 			m.server.createCollection(m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
 			m.form.inputs = make([]formInput, 0)
-			m.windowType = ContentWindow
+			m.windowType = DirectoryWalker
 		}
 	}
 	return m, cmd
@@ -321,6 +380,12 @@ func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 
 // Handle a single key press
 func (m model) handleContentKey(msg tea.KeyMsg) model {
+    // if m.server.currentUser.selectedCollection != nil {
+    //     log.Printf("Handling content key user id: %s selected collection: %s", m.server.currentUser.name, m.server.currentUser.selectedCollection.name)
+    //
+    // } else {
+    //     log.Printf("Handling content key user id: %s", m.server.currentUser.name)
+    // }
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		m.quitting = true
@@ -354,8 +419,16 @@ func (m model) handleContentKey(msg tea.KeyMsg) model {
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
 	case key.Matches(msg, m.keys.NewCollection):
-		m.form = newForm("create collection", getNewCollectionInputs())
+		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.SelectCollection):
+		collections := m.server.getCollections()
+		m.listSelection = listSelection{title: "select collection", items: make([]listSelectionItem, 0), selected: 0}
+		log.Println("got collections ", collections)
+		for _, collection := range collections {
+			m.listSelection.items = append(m.listSelection.items, collection)
+		}
+		m.windowType = ListSelectionWindow
 	case key.Matches(msg, m.keys.Enter):
 		choice := m.server.choices[m.cursor]
 		if choice.isDir {
@@ -397,7 +470,21 @@ func (m model) formView() string {
 }
 
 // Standard content handler
-func (m model) getContent() string {
+func (m model) listSelectionView() string {
+	s := ""
+	for i, choice := range m.listSelection.items {
+		if i == m.listSelection.selected {
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.Name(), choice.Description()))
+		} else {
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.Name()))
+		}
+	}
+	return s
+}
+
+// Standard content handler
+func (m model) directoryView() string {
 	s := ""
 	for i, choice := range m.server.choices {
 		if m.cursor == i {
@@ -421,7 +508,7 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	if !m.ready {
 		// Handles waiting for the window to instantiate so the viewport can be created
 		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
-		m.viewport.SetContent(m.getContent())
+		m.viewport.SetContent(m.directoryView())
 		m.ready = true
 	} else {
 		m.viewport.Width = msg.Width
@@ -434,8 +521,10 @@ func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch m.windowType {
 	case FormWindow:
 		m.viewport.SetContent(m.formView())
-	case ContentWindow:
-		m.viewport.SetContent(m.getContent())
+	case DirectoryWalker:
+		m.viewport.SetContent(m.directoryView())
+	case ListSelectionWindow:
+		m.viewport.SetContent(m.listSelectionView())
 	default:
 		m.viewport.SetContent("Invalid window type")
 	}
@@ -455,7 +544,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.windowType {
 		case FormWindow:
 			m, cmd = m.handleFormKey(msg, cmd)
-		case ContentWindow:
+		case ListSelectionWindow:
+			m, cmd = m.handleListSelectionKey(msg, cmd)
+		case DirectoryWalker:
 			m = m.handleContentKey(msg)
 			if m.quitting {
 				return m, tea.Quit
@@ -473,7 +564,9 @@ func (m model) View() string {
 	switch m.windowType {
 	case FormWindow:
 		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
-	case ContentWindow:
+	case DirectoryWalker:
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	case ListSelectionWindow:
 		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 	default:
 		return "Invalid window type"
@@ -511,8 +604,9 @@ func (d dirEntryWithTags) displayTags() string {
 }
 
 type user struct {
-	id   int
-	name string
+	id                 int
+	name               string
+	selectedCollection *collection
 }
 
 // Struct holding the app's configuration
@@ -609,6 +703,7 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
+    log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.selectedCollection.name)
 	s._updateChoices()
 	return &s
 }
@@ -623,6 +718,11 @@ func (s *server) _updateChoices() {
 	} else {
 		s.choices = s.listDirEntries()
 	}
+}
+
+func (s *server) updateSelectedCollection(collection collection) {
+	s.currentUser.selectedCollection = &collection
+	s.updateSelectedCollectionInDb(collection.id)
 }
 
 func (s *server) getWholeCurrentDir() string {
@@ -716,20 +816,29 @@ where t.file_path like '?%'`
 }
 
 func (s *server) getUsers() []user {
-	statement := `select id, name from User`
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description from User u left join Collection c on u.selected_collection = c.id`
 	rows, err := s.db.Query(statement)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
 	}
 	defer rows.Close()
 	users := make([]user, 0)
 	for rows.Next() {
 		var id int
 		var name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var collectionId *int
+		var collectionName *string
+		var collectionDescription *string
+		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		users = append(users, user{id: id, name: name})
+		var selectedCollection *collection
+		if collectionId != nil && collectionName != nil && collectionDescription != nil {
+			selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+		} else {
+            selectedCollection = &collection{id: 0, name: "", description: ""}
+        }
+		users = append(users, user{id: id, name: name, selectedCollection: selectedCollection})
 	}
 	return users
 }
@@ -737,7 +846,7 @@ func (s *server) getUsers() []user {
 func (s *server) createUser(name string) int {
 	res, err := s.db.Exec("insert ignore into User (name) values (?)", name)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in createUser: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
@@ -746,10 +855,17 @@ func (s *server) createUser(name string) int {
 	return int(id)
 }
 
+func (s *server) updateSelectedCollectionInDb(collection int) {
+	_, err := s.db.Exec("update User set selected_collection = ? where id = ?", collection, s.currentUser.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in updateSelectedCollectionInDb: %v", err)
+	}
+}
+
 func (s *server) updateUsername(id int, name string) {
 	_, err := s.db.Exec("update User set name = ? where id = ?", name, id)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in updateUsername: %v", err)
 	}
 }
 
@@ -758,13 +874,52 @@ func (s *server) createCollection(name string, description string) int {
 	var res sql.Result
 	res, err = s.db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.currentUser.id, description)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in createCollection: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
 		log.Fatalf("Failed to get last insert ID: %v", err)
 	}
 	return int(id)
+}
+
+type collection struct {
+	id          int
+	name        string
+	description string
+}
+
+func (c collection) Id() int {
+	return c.id
+}
+
+func (c collection) Name() string {
+	return c.name
+}
+
+func (c collection) Description() string {
+	return c.description
+}
+
+func (s *server) getCollections() []collection {
+	statement := `select id, name, description from Collection where user_id = ?`
+	rows, err := s.db.Query(statement, s.currentUser.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in getCollections: %v", err)
+	}
+	defer rows.Close()
+	collections := make([]collection, 0)
+	for rows.Next() {
+		var id int
+		var name string
+		var description string
+		if err := rows.Scan(&id, &name, &description); err != nil {
+			log.Fatalf("Failed to scan row: %v", err)
+		}
+		collection := collection{id: id, name: name, description: description}
+		collections = append(collections, collection)
+	}
+	return collections
 }
 
 func (s *server) updateCollectionName(id int, name string) {
