@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,13 +64,15 @@ type KeyMap struct {
 	SelectCollection   key.Binding
 	InsertMode         key.Binding
 	ToggleAutoAudition key.Binding
+	AuditionRandom     key.Binding
 }
 
+// The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
+	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.AuditionRandom, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
 }
 
-// Short help only
+// Empty because not using
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{},
@@ -124,6 +127,10 @@ var DefaultKeyMap = KeyMap{
 	ToggleAutoAudition: key.NewBinding(
 		key.WithKeys("A"),
 		key.WithHelp("A", "auto audition"),
+	),
+	AuditionRandom: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "audition random sample"),
 	),
 }
 
@@ -273,6 +280,100 @@ func (m model) footerView() string {
 	return centeredHelpText
 }
 
+// Formview handler
+func (m model) formView() string {
+	s := ""
+	for i, input := range m.form.inputs {
+		if m.form.focusedInput == i {
+			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+		} else {
+			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+		}
+	}
+	return s
+}
+
+// Standard content handler
+func (m model) listSelectionView() string {
+	s := ""
+	for i, choice := range m.listSelection.items {
+		if i == m.listSelection.selected {
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.Name(), choice.Description()))
+		} else {
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.Name()))
+		}
+	}
+	return s
+}
+
+// Standard content handler
+func (m model) directoryView() string {
+	s := ""
+	for i, choice := range m.server.choices {
+		if m.cursor == i {
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
+		} else {
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
+		}
+	}
+	return s
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
+	headerHeight := lipgloss.Height(m.headerView())
+	footerHeight := lipgloss.Height(m.footerView())
+	verticalMarginHeight := headerHeight + footerHeight
+	if !m.ready {
+		// Handles waiting for the window to instantiate so the viewport can be created
+		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
+		m.viewport.SetContent(m.directoryView())
+		m.ready = true
+	} else {
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - verticalMarginHeight
+	}
+	return m
+}
+
+func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch m.windowType {
+	case FormWindow:
+		m.viewport.SetContent(m.formView())
+	case DirectoryWalker:
+		m.viewport.SetContent(m.directoryView())
+	case ListSelectionWindow:
+		m.viewport.SetContent(m.listSelectionView())
+	default:
+		m.viewport.SetContent("Invalid window type")
+	}
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	if m.quitting {
+		return ""
+	}
+	switch m.windowType {
+	case FormWindow:
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
+	case DirectoryWalker:
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	case ListSelectionWindow:
+		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	default:
+		return "Invalid window type"
+	}
+}
+
+// ////////////////////// UI UPDATING ////////////////////////
 func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Up):
@@ -440,6 +541,12 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		}
 	case key.Matches(msg, m.keys.Audition):
 		m.auditionCurrentlySelectedFile()
+	case key.Matches(msg, m.keys.AuditionRandom):
+		fileIndex := m.server.getRandomAudioFileIndex()
+		if fileIndex != -1 {
+			m.cursor = fileIndex
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
@@ -486,83 +593,6 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 	return m
 }
 
-// Formview handler
-func (m model) formView() string {
-	s := ""
-	for i, input := range m.form.inputs {
-		if m.form.focusedInput == i {
-			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
-		} else {
-			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
-		}
-	}
-	return s
-}
-
-// Standard content handler
-func (m model) listSelectionView() string {
-	s := ""
-	for i, choice := range m.listSelection.items {
-		if i == m.listSelection.selected {
-			cursor := "-->"
-			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.Name(), choice.Description()))
-		} else {
-			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.Name()))
-		}
-	}
-	return s
-}
-
-// Standard content handler
-func (m model) directoryView() string {
-	s := ""
-	for i, choice := range m.server.choices {
-		if m.cursor == i {
-			cursor := "-->"
-			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
-		} else {
-			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
-		}
-	}
-	return s
-}
-
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
-func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
-	headerHeight := lipgloss.Height(m.headerView())
-	footerHeight := lipgloss.Height(m.footerView())
-	verticalMarginHeight := headerHeight + footerHeight
-	if !m.ready {
-		// Handles waiting for the window to instantiate so the viewport can be created
-		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
-		m.viewport.SetContent(m.directoryView())
-		m.ready = true
-	} else {
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - verticalMarginHeight
-	}
-	return m
-}
-
-func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
-	switch m.windowType {
-	case FormWindow:
-		m.viewport.SetContent(m.formView())
-	case DirectoryWalker:
-		m.viewport.SetContent(m.directoryView())
-	case ListSelectionWindow:
-		m.viewport.SetContent(m.listSelectionView())
-	default:
-		m.viewport.SetContent("Invalid window type")
-	}
-
-	m.viewport, cmd = m.viewport.Update(msg)
-	return m, cmd
-}
-
 // Takes a message and updates the model
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -585,22 +615,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.keyHack.updateLastKey(msg.String())
 	}
 	return m.setViewportContent(msg, cmd)
-}
-
-func (m model) View() string {
-	if m.quitting {
-		return ""
-	}
-	switch m.windowType {
-	case FormWindow:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
-	case DirectoryWalker:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
-	case ListSelectionWindow:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
-	default:
-		return "Invalid window type"
-	}
 }
 
 //////////////////////// LOCAL SERVER ////////////////////////
@@ -737,6 +751,19 @@ func newServer(audioPlayer *AudioPlayer) *server {
 	log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.selectedCollection.name)
 	s._updateChoices()
 	return &s
+}
+
+func (s *server) getRandomAudioFileIndex() int {
+	if len(s.choices) == 0 {
+		return -1
+	}
+	possibleIndexes := make([]int, 0)
+	for i, choice := range s.choices {
+		if !choice.isDir {
+			possibleIndexes = append(possibleIndexes, i)
+		}
+	}
+	return possibleIndexes[rand.Intn(len(possibleIndexes))]
 }
 
 func (s *server) _updateChoices() {

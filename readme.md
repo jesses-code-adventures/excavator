@@ -32,7 +32,7 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
 - [x] press Q to quit.
 - [x] press A to audition a sample you're hovering over.
-- [ ] press R to jump to and audition a random sample from the current directory.
+- [x] press R to jump to and audition a random sample from the current directory.
 - [x] press shift-A to toggle auto-audition mode.
 - [x] press shift-N to create a new collection
 - [x] press shift-C to change the target collection
