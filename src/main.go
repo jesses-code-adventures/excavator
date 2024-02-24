@@ -397,10 +397,10 @@ func (m model) auditionCurrentlySelectedFile() {
 // Handle a single key press
 func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 	if m.server.currentUser.selectedCollection != nil {
-        log.Printf("Handling content key user id: %s selected collection: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.selectedCollection.name, m.server.currentUser.autoAudition)
+		log.Printf("Handling content key user id: %s selected collection: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.selectedCollection.name, m.server.currentUser.autoAudition)
 
 	} else {
-        log.Printf("Handling content key user id: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.autoAudition)
+		log.Printf("Handling content key user id: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.autoAudition)
 	}
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -410,42 +410,42 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		if m.cursor > 0 {
 			m.cursor--
 		}
-        if m.server.currentUser.autoAudition {
-            m.auditionCurrentlySelectedFile()
-        }
+		if m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.Down):
 		if m.cursor < len(m.server.choices)-1 {
 			m.cursor++
 		}
-        if m.server.currentUser.autoAudition {
-            m.auditionCurrentlySelectedFile()
-        }
+		if m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.JumpDown):
 		if m.cursor < len(m.server.choices)-8 {
 			m.cursor += 8
 		} else {
 			m.cursor = len(m.server.choices) - 1
 		}
-        if m.server.currentUser.autoAudition {
-            m.auditionCurrentlySelectedFile()
-        }
+		if m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.JumpUp):
 		if m.cursor > 8 {
 			m.cursor -= 8
 		} else {
 			m.cursor = 0
 		}
-        if m.server.currentUser.autoAudition {
-            m.auditionCurrentlySelectedFile()
-        }
+		if m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.Audition):
-        m.auditionCurrentlySelectedFile()
+		m.auditionCurrentlySelectedFile()
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
-        if m.server.currentUser.autoAudition {
-            m.auditionCurrentlySelectedFile()
-        }
+		if m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
+		}
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow

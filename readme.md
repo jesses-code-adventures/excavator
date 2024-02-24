@@ -40,7 +40,7 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [ ] press shift-D to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
 - [ ] press shift-T to change the target collection when browsing samples.
-- [ ] press shift-E to export the current target collection to its output directory (should just replace the whole directory destructively at first).
+- [ ] press shift-E to export the current target collection using an export (should just replace the whole directory destructively at first).
 - [ ] press shift-K on a sample to get a list of all of its tagged locations in a hover box.
 
 ### further extensions
