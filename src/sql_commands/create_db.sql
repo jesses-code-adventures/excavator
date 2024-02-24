@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS User (
     id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
-    selected_collection INTEGER,
     auto_audition boolean default(0),
+    selected_collection INTEGER,
+    selected_subcollection TEXT default(''),
     FOREIGN KEY (selected_collection) REFERENCES Collection(id)
 );
 

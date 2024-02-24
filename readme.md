@@ -30,16 +30,16 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] browse samples using J/up arrow and K/down arrow.
 - [x] samples should play asynchronously so the user can continue browsing while a sample plays
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
-- [x] press Q to quit.
-- [x] press A to audition a sample you're hovering over.
-- [x] press R to jump to and audition a random sample from the current directory.
+- [x] press q to quit.
+- [x] press a to audition a sample you're hovering over.
+- [x] press r to jump to and audition a random sample from the current directory.
+- [x] press t to create a tag in the current target collection and target directory.
+- [x] press shift-T to create a tag in the current target collection where the tag name and directory is editable.
 - [x] press shift-A to toggle auto-audition mode.
-- [x] press shift-N to create a new collection
-- [x] press shift-C to change the target collection
-- [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
-- [ ] press shift-D to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
+- [x] press shift-N to create a new collection.
+- [x] press shift-C to change the target collection.
+- [ ] press shift-D to change the target directory in the current collection. this should be a searchable list, and if enter is pressed with no matches it should create a new one.
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
-- [ ] press shift-T to change the target collection when browsing samples.
 - [ ] press shift-E to export the current target collection using an export (should just replace the whole directory destructively at first).
 - [ ] press shift-K on a sample to get a list of all of its tagged locations in a hover box.
 

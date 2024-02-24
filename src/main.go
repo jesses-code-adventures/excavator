@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -56,24 +57,27 @@ func (k *keymapHacks) lastKeyWasG() bool {
 
 // All possible keymap bindings
 type KeyMap struct {
-	Up                 key.Binding
-	Down               key.Binding
-	Quit               key.Binding
-	JumpUp             key.Binding
-	JumpDown           key.Binding
-	JumpBottom         key.Binding
-	Audition           key.Binding
-	Enter              key.Binding
-	NewCollection      key.Binding
-	SelectCollection   key.Binding
-	InsertMode         key.Binding
-	ToggleAutoAudition key.Binding
-	AuditionRandom     key.Binding
+	Up                     key.Binding
+	Down                   key.Binding
+	Quit                   key.Binding
+	JumpUp                 key.Binding
+	JumpDown               key.Binding
+	JumpBottom             key.Binding
+	Audition               key.Binding
+	Enter                  key.Binding
+	NewCollection          key.Binding
+	SelectCollection       key.Binding
+	InsertMode             key.Binding
+	ToggleAutoAudition     key.Binding
+	AuditionRandom         key.Binding
+	CreateQuickTag         key.Binding
+	CreateTag              key.Binding
+	SetTargetSubCollection key.Binding
 }
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.AuditionRandom, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
+	return []key.Binding{k.Quit, k.Audition, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SelectCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag}
 }
 
 // Empty because not using
@@ -125,6 +129,10 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("N"),
 		key.WithHelp("N", "new collection"),
 	),
+	SetTargetSubCollection: key.NewBinding(
+		key.WithKeys("D"),
+		key.WithHelp("D", "target subcollection"),
+	),
 	SelectCollection: key.NewBinding(
 		key.WithKeys("C"),
 		key.WithHelp("C", "select collection"),
@@ -136,6 +144,14 @@ var DefaultKeyMap = KeyMap{
 	AuditionRandom: key.NewBinding(
 		key.WithKeys("r"),
 		key.WithHelp("r", "audition random sample"),
+	),
+	CreateQuickTag: key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "quick tag"),
+	),
+	CreateTag: key.NewBinding(
+		key.WithKeys("T"),
+		key.WithHelp("T", "editable tag"),
 	),
 }
 
@@ -224,6 +240,35 @@ func getNewCollectionInputs() []formInput {
 // Get the new collection form
 func getNewCollectionForm() form {
 	return newForm("create collection", getNewCollectionInputs())
+}
+
+// Get the inputs for the new collection form
+func getSubcollectionInput() []formInput {
+	return []formInput{
+		newFormInput("subcollection"),
+	}
+}
+
+// Get the new collection form
+func getTargetSubCollectionForm() form {
+	return newForm("set target subcollection", getSubcollectionInput())
+}
+
+// Get the inputs for the new collection form
+func getCreateCollectionTagInputs(defaultName string, defaultSubCollection string) []formInput {
+	name := newFormInput("name")
+	name.input.SetValue(defaultName)
+	subcollection := newFormInput("subcollection")
+	subcollection.input.SetValue(defaultSubCollection)
+	return []formInput{
+		name,
+		subcollection,
+	}
+}
+
+// Get the new collection form
+func getCreateTagForm(defaultName string, defaultSubCollection string) form {
+	return newForm("create tag", getCreateCollectionTagInputs(defaultName, defaultSubCollection))
 }
 
 /// List selection ///
@@ -457,6 +502,10 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		m.selectableList.items = make([]selectableListItem, 0)
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.SetTargetSubCollection):
+		m.selectableList.items = make([]selectableListItem, 0)
+		m.form = getTargetSubCollectionForm()
+		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
 		m.selectableList.items = make([]selectableListItem, 0)
 		m.server.updateChoices()
@@ -499,7 +548,7 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 		m.form.inputs[m.form.focusedInput].input.Blur()
 		m.form.writing = true
 		m.form.inputs[m.form.focusedInput].input.Focus()
-	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection), key.Matches(msg, m.keys.SetTargetSubCollection):
 		m.windowType = DirectoryWalker
 		m.form.inputs = make([]formInput, 0)
 		m.server.updateChoices()
@@ -517,12 +566,20 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 			if input.input.Value() == "" {
 				m.form.focusedInput = i
 				m.form.inputs[i].input.Focus()
-				break
+				return m, cmd
 			}
 		}
 		switch m.form.title {
 		case "create collection":
 			m.server.createCollection(m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+			m.form.inputs = make([]formInput, 0)
+			m.windowType = DirectoryWalker
+		case "set target subcollection":
+			m.server.updateTargetSubCollection(m.form.inputs[0].input.Value())
+			m.form.inputs = make([]formInput, 0)
+			m.windowType = DirectoryWalker
+		case "create tag":
+			m.server.createTag(m.server.choices[m.cursor].path, m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
 			m.form.inputs = make([]formInput, 0)
 			m.windowType = DirectoryWalker
 		}
@@ -621,6 +678,9 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.SetTargetSubCollection):
+		m.form = getTargetSubCollectionForm()
+		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.SelectCollection):
 		collections := m.server.getCollections()
 		m.selectableList = selectableList{title: "select collection", items: make([]selectableListItem, 0), selected: 0}
@@ -630,17 +690,24 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		m.windowType = ListSelectionWindow
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
+	case key.Matches(msg, m.keys.CreateQuickTag):
+		choice := m.server.choices[m.cursor]
+		if !choice.isDir {
+			m.server.createQuickTag(choice.path)
+		}
+		m.server.updateChoices()
+	case key.Matches(msg, m.keys.CreateTag):
+		m.form = getCreateTagForm(path.Base(m.server.choices[m.cursor].path), m.server.currentUser.targetSubCollection)
+		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Enter):
 		choice := m.server.choices[m.cursor]
 		if choice.isDir {
 			if choice.path == ".." {
 				m.cursor = 0
-				// m.viewport.GotoTop()
 				m.server.changeToParentDir()
 				m.dirVerticalNavEffect()
 			} else {
 				m.cursor = 0
-				// m.viewport.GotoTop()
 				m.server.changeDir(choice.path)
 				m.dirVerticalNavEffect()
 			}
@@ -713,10 +780,11 @@ func (d dirEntryWithTags) displayTags() string {
 
 // A user
 type user struct {
-	id               int
-	name             string
-	targetCollection *collection
-	autoAudition     bool
+	id                  int
+	name                string
+	autoAudition        bool
+	targetCollection    *collection
+	targetSubCollection string
 }
 
 // Struct holding the app's configuration
@@ -813,7 +881,7 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
-	log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.targetCollection.name)
+	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
 	s.updateChoices()
 	return &s
 }
@@ -854,6 +922,29 @@ func (s *server) updateAutoAudition(autoAudition bool) {
 func (s *server) updateTargetCollection(collection collection) {
 	s.currentUser.targetCollection = &collection
 	s.updateSelectedCollectionInDb(collection.id)
+	s.updateTargetSubCollection("")
+	s.currentUser.targetSubCollection = ""
+}
+
+// Set the current user's target subcollection and update in db
+func (s *server) updateTargetSubCollection(subCollection string) {
+	if len(subCollection) > 0 && !strings.HasPrefix(subCollection, "/") {
+		subCollection = "/" + subCollection
+	}
+	s.currentUser.targetSubCollection = subCollection
+	s.updateTargetSubCollectionInDb(subCollection)
+}
+
+// Create a tag with the defaults based on the current state
+func (s *server) createQuickTag(filepath string) {
+	s.createCollectionTagInDb(filepath, s.currentUser.targetCollection.id, path.Base(filepath), s.currentUser.targetSubCollection)
+	s.updateChoices()
+}
+
+// Create a tag with all possible args
+func (s *server) createTag(filepath string, name string, subCollection string) {
+	s.createCollectionTagInDb(filepath, s.currentUser.targetCollection.id, name, subCollection)
+	s.updateChoices()
 }
 
 // Get the full path of the current directory
@@ -909,52 +1000,57 @@ func (s *server) listDirEntries() []dirEntryWithTags {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
 	files = s.filterDirEntries(files)
-	collectionTags := s.getCollectionTags(s.root, &s.currentDir)
+	collectionTags := s.getCollectionTags(s.currentDir)
 	var samples []dirEntryWithTags
 	for _, file := range files {
 		matchedTags := make([]collectionTag, 0)
-		for _, tag := range collectionTags {
-			if strings.Contains(tag.filePath, file.Name()) {
-				matchedTags = append(matchedTags, tag)
+		isDir := file.IsDir()
+		if !isDir {
+			for _, tag := range collectionTags {
+				if strings.Contains(tag.filePath, file.Name()) {
+					matchedTags = append(matchedTags, tag)
+				}
 			}
 		}
-		isDir := file.IsDir()
 		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
 	}
 	return samples
 }
 
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
-func (s *server) getCollectionTags(root string, subDirectory *string) []collectionTag {
-	queryDir := root
-	if subDirectory != nil {
-		queryDir = filepath.Join(root, *subDirectory)
-	}
+
+// Get collection tags associated with a directory
+func (s *server) getCollectionTags(dir string) []collectionTag {
+	log.Println("get collection tags")
+	log.Println("dir: ", dir)
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where t.file_path like '?%'`
-	rows, err := s.db.Query(statement, queryDir)
+where t.file_path like ?`
+	dir = dir + "%"
+	rows, err := s.db.Query(statement, dir)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
 	tags := make([]collectionTag, 0)
+	log.Println("collection tags")
 	for rows.Next() {
-		var filePath, tagName, subCollection string
-		if err := rows.Scan(&filePath, &tagName, &subCollection); err != nil {
+		var filePath, collectionName, subCollection string
+		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		tags = append(tags, collectionTag{filePath: filePath, collectionName: tagName, subCollection: subCollection})
+		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
+		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
 	}
 	return tags
 }
 
 // Get all users
 func (s *server) getUsers() []user {
-	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition from User u left join Collection c on u.selected_collection = c.id`
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection from User u left join Collection c on u.selected_collection = c.id`
 	rows, err := s.db.Query(statement)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
@@ -968,7 +1064,8 @@ func (s *server) getUsers() []user {
 		var collectionName *string
 		var collectionDescription *string
 		var autoAudition bool
-		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition); err != nil {
+		var selectedSubCollection string
+		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		var selectedCollection *collection
@@ -977,7 +1074,7 @@ func (s *server) getUsers() []user {
 		} else {
 			selectedCollection = &collection{id: 0, name: "", description: ""}
 		}
-		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection})
+		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection})
 	}
 	return users
 }
@@ -1082,7 +1179,7 @@ func (s *server) getCollections() []collection {
 func (s *server) updateCollectionNameInDb(id int, name string) {
 	_, err := s.db.Exec("update Collection set name = ? where id = ?", name, id)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in updateCollectionNameInDb: %v", err)
 	}
 }
 
@@ -1090,15 +1187,18 @@ func (s *server) updateCollectionNameInDb(id int, name string) {
 func (s *server) updateCollectionDescriptionInDb(id int, description string) {
 	_, err := s.db.Exec("update Collection set description = ? where id = ?", description, id)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in updateCollectionDescriptionInDb: %v", err)
 	}
 }
 
 // Create a tag in the database
 func (s *server) createTagInDb(filePath string) int {
-	res, err := s.db.Exec("insert ignore into Tag (file_path, user_id) values (?)", filePath, s.currentUser.id)
+	if !strings.Contains(filePath, s.root) {
+		filePath = filepath.Join(s.currentDir, filePath)
+	}
+	res, err := s.db.Exec("insert or ignore into Tag (file_path, user_id) values (?, ?)", filePath, s.currentUser.id)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in createTagInDb: %v", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
@@ -1108,15 +1208,30 @@ func (s *server) createTagInDb(filePath string) int {
 }
 
 // Add a tag to a collection in the database
-func (s *server) addTagToCollectionInDb(tagId int, collectionId int, name string, subCollection *string) {
-	var err error
-	if subCollection == nil {
-		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id) values (?, ?)", tagId, collectionId)
-	} else {
-		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id, sub_collection) values (?, ?, ?)", tagId, collectionId, *subCollection)
-	}
+func (s *server) addTagToCollectionInDb(tagId int, collectionId int, name string, subCollection string) {
+	log.Printf("Tag id: %d, collectionId: %d, name: %s, subCollection: %s", tagId, collectionId, name, subCollection)
+	res, err := s.db.Exec("insert or ignore into CollectionTag (tag_id, collection_id, name, sub_collection) values (?, ?, ?, ?)", tagId, collectionId, name, subCollection)
 	if err != nil {
-		log.Fatalf("Failed to execute SQL statement: %v", err)
+		log.Fatalf("Failed to execute SQL statement in addTagToCollectionInDb: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		log.Fatalf("Failed to get last insert ID: %v", err)
+	}
+	log.Printf("Collection tag insert ID: %d", id)
+}
+
+// Add a CollectionTag to the database, handling creation of core tag if needed
+func (s *server) createCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
+	tagId := s.createTagInDb(filePath)
+	log.Printf("Tag id: %d", tagId)
+	s.addTagToCollectionInDb(tagId, collectionId, name, subCollection)
+}
+
+func (s *server) updateTargetSubCollectionInDb(subCollection string) {
+	_, err := s.db.Exec("update User set selected_subcollection = ? where id = ?", subCollection, s.currentUser.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in updateSubCollectionInDb: %v", err)
 	}
 }
 
