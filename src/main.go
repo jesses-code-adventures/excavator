@@ -39,18 +39,22 @@ type keymapHacks struct {
 	lastKey string
 }
 
+// Track this keystroke so it can be checked in the next one
 func (k *keymapHacks) updateLastKey(key string) {
 	k.lastKey = key
 }
 
+// Get the previous keystroke
 func (k *keymapHacks) getLastKey() string {
 	return k.lastKey
 }
 
+// For jumping to the top of the list
 func (k *keymapHacks) lastKeyWasG() bool {
 	return k.lastKey == "g"
 }
 
+// All possible keymap bindings
 type KeyMap struct {
 	Up                 key.Binding
 	Down               key.Binding
@@ -69,7 +73,7 @@ type KeyMap struct {
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.AuditionRandom, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
+	return []key.Binding{k.Quit, k.Audition, k.AuditionRandom, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
 }
 
 // Empty because not using
@@ -79,6 +83,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	}
 }
 
+// The app's default key maps
 var DefaultKeyMap = KeyMap{
 	Up: key.NewBinding(
 		key.WithKeys("k", "up"),
@@ -135,6 +140,8 @@ var DefaultKeyMap = KeyMap{
 }
 
 // ////////////////////// UI ////////////////////////
+
+// All styles to be used throughout the ui
 var (
 	green    = lipgloss.Color("#25A065")
 	pink     = lipgloss.Color("#E441B5")
@@ -172,12 +179,13 @@ var (
 			Margin(0, 0, 0)
 )
 
-// / Form ///
+// A singular form input control
 type formInput struct {
 	name  string
 	input textinput.Model
 }
 
+// Constructor for a form input
 func newFormInput(name string) formInput {
 	return formInput{
 		name:  name,
@@ -185,17 +193,7 @@ func newFormInput(name string) formInput {
 	}
 }
 
-func getNewCollectionInputs() []formInput {
-	return []formInput{
-		newFormInput("name"),
-		newFormInput("description"),
-	}
-}
-
-func getNewCollectionForm() form {
-	return newForm("create collection", getNewCollectionInputs())
-}
-
+// A generic form
 type form struct {
 	title        string
 	inputs       []formInput
@@ -203,6 +201,7 @@ type form struct {
 	focusedInput int
 }
 
+// A form constructor
 func newForm(title string, inputs []formInput) form {
 	return form{
 		title:        title,
@@ -212,20 +211,40 @@ func newForm(title string, inputs []formInput) form {
 	}
 }
 
+//// Form implementations ////
+
+// Get the inputs for the new collection form
+func getNewCollectionInputs() []formInput {
+	return []formInput{
+		newFormInput("name"),
+		newFormInput("description"),
+	}
+}
+
+// Get the new collection form
+func getNewCollectionForm() form {
+	return newForm("create collection", getNewCollectionInputs())
+}
+
+
 /// List selection ///
 
-type listSelectionItem interface {
+
+// Interface for list selection items so the list can easily be reused
+type selectableListItem interface {
 	Id() int
 	Name() string
 	Description() string
 }
 
-type listSelection struct {
+// A list where a single item can be selected
+type selectableList struct {
 	title    string
-	items    []listSelectionItem
+	items    []selectableListItem
 	selected int
 }
 
+// A generic model defining app behaviour in all states
 type model struct {
 	ready         bool
 	quitting      bool
@@ -238,9 +257,10 @@ type model struct {
 	help          help.Model
 	windowType    windowType
 	form          form
-	listSelection listSelection
+	selectableList selectableList
 }
 
+// Different window types
 type windowType int
 
 const (
@@ -249,7 +269,8 @@ const (
 	ListSelectionWindow
 )
 
-func initialModel(server *server) model {
+// Constructor for the app's model
+func excavatorModel(server *server) model {
 	return model{
 		ready:    false,
 		quitting: false,
@@ -296,8 +317,8 @@ func (m model) formView() string {
 // Standard content handler
 func (m model) listSelectionView() string {
 	s := ""
-	for i, choice := range m.listSelection.items {
-		if i == m.listSelection.selected {
+	for i, choice := range m.selectableList.items {
+		if i == m.selectableList.selected {
 			cursor := "-->"
 			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.Name(), choice.Description()))
 		} else {
@@ -325,12 +346,13 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+// Ui updating for window resize events
 func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	headerHeight := lipgloss.Height(m.headerView())
 	footerHeight := lipgloss.Height(m.footerView())
 	verticalMarginHeight := headerHeight + footerHeight
 	if !m.ready {
-		// Handles waiting for the window to instantiate so the viewport can be created
+		// Instantiate a viewport when the program starts
 		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
 		m.viewport.SetContent(m.directoryView())
 		m.ready = true
@@ -341,6 +363,7 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	return m
 }
 
+// Set the content of the viewport based on the window type
 func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch m.windowType {
 	case FormWindow:
@@ -357,6 +380,7 @@ func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
 	return m, cmd
 }
 
+// Render the model
 func (m model) View() string {
 	if m.quitting {
 		return ""
@@ -374,34 +398,36 @@ func (m model) View() string {
 }
 
 // ////////////////////// UI UPDATING ////////////////////////
+
+// List selection navigation
 func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Up):
-		m.listSelection.selected++
-		if m.listSelection.selected >= len(m.listSelection.items) {
-			m.listSelection.selected = 0
+		m.selectableList.selected++
+		if m.selectableList.selected >= len(m.selectableList.items) {
+			m.selectableList.selected = 0
 		}
 	case key.Matches(msg, m.keys.Down):
-		m.listSelection.selected--
-		if m.listSelection.selected < 0 {
-			m.listSelection.selected = len(m.listSelection.items) - 1
+		m.selectableList.selected--
+		if m.selectableList.selected < 0 {
+			m.selectableList.selected = len(m.selectableList.items) - 1
 		}
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
 		m.windowType = FormWindow
-		m.listSelection.items = make([]listSelectionItem, 0)
+		m.selectableList.items = make([]selectableListItem, 0)
 		m.form = getNewCollectionForm()
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
 		m.windowType = DirectoryWalker
-		m.listSelection.items = make([]listSelectionItem, 0)
-		m.server._updateChoices()
+		m.selectableList.items = make([]selectableListItem, 0)
+		m.server.updateChoices()
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
-		switch m.listSelection.title {
+		switch m.selectableList.title {
 		case "select collection":
-			if collection, ok := m.listSelection.items[m.listSelection.selected].(collection); ok {
-				m.server.updateSelectedCollection(collection)
-				m.listSelection.items = make([]listSelectionItem, 0)
+			if collection, ok := m.selectableList.items[m.selectableList.selected].(collection); ok {
+				m.server.updateTargetCollection(collection)
+				m.selectableList.items = make([]selectableListItem, 0)
 				m.windowType = DirectoryWalker
 			} else {
 				log.Fatalf("Invalid list selection item type")
@@ -411,6 +437,7 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 	return m, cmd
 }
 
+// Form navigation
 func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Up):
@@ -434,12 +461,12 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
 		m.windowType = DirectoryWalker
 		m.form.inputs = make([]formInput, 0)
-		m.server._updateChoices()
+		m.server.updateChoices()
 	case key.Matches(msg, m.keys.SelectCollection):
 		collections := m.server.getCollections()
-		m.listSelection = listSelection{title: "select collection", items: make([]listSelectionItem, 0), selected: 0}
+		m.selectableList = selectableList{title: "select collection", items: make([]selectableListItem, 0), selected: 0}
 		for _, collection := range collections {
-			m.listSelection.items = append(m.listSelection.items, collection)
+			m.selectableList.items = append(m.selectableList.items, collection)
 		}
 		m.windowType = ListSelectionWindow
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
@@ -462,6 +489,7 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 	return m, cmd
 }
 
+// Form writing
 func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -479,6 +507,7 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 	return m, cmd
 }
 
+// Form key
 func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	if m.form.writing {
 		m, cmd = m.handleFormWritingKey(msg, cmd)
@@ -488,6 +517,7 @@ func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	return m, cmd
 }
 
+// Audition the file under the cursor
 func (m model) auditionCurrentlySelectedFile() {
 	choice := m.server.choices[m.cursor]
 	if !choice.isDir {
@@ -495,14 +525,15 @@ func (m model) auditionCurrentlySelectedFile() {
 	}
 }
 
+// These functions should run every time the cursor moves in directory view
+func (m model) directoryNavigationEffect() {
+	if m.server.currentUser.autoAudition {
+		m.auditionCurrentlySelectedFile()
+	}
+}
+
 // Handle a single key press
 func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
-	if m.server.currentUser.selectedCollection != nil {
-		log.Printf("Handling content key user id: %s selected collection: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.selectedCollection.name, m.server.currentUser.autoAudition)
-
-	} else {
-		log.Printf("Handling content key user id: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.autoAudition)
-	}
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		m.quitting = true
@@ -511,57 +542,46 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		if m.cursor > 0 {
 			m.cursor--
 		}
-		if m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
-		}
+		m.directoryNavigationEffect()
 	case key.Matches(msg, m.keys.Down):
 		if m.cursor < len(m.server.choices)-1 {
 			m.cursor++
 		}
-		if m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
-		}
+		m.directoryNavigationEffect()
 	case key.Matches(msg, m.keys.JumpDown):
 		if m.cursor < len(m.server.choices)-8 {
 			m.cursor += 8
 		} else {
 			m.cursor = len(m.server.choices) - 1
 		}
-		if m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
-		}
+		m.directoryNavigationEffect()
 	case key.Matches(msg, m.keys.JumpUp):
 		if m.cursor > 8 {
 			m.cursor -= 8
 		} else {
 			m.cursor = 0
 		}
-		if m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
-		}
+		m.directoryNavigationEffect()
 	case key.Matches(msg, m.keys.Audition):
 		m.auditionCurrentlySelectedFile()
 	case key.Matches(msg, m.keys.AuditionRandom):
 		fileIndex := m.server.getRandomAudioFileIndex()
 		if fileIndex != -1 {
 			m.cursor = fileIndex
-			m.auditionCurrentlySelectedFile()
+			m.directoryNavigationEffect()
 		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
-		if m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
-		}
+		m.directoryNavigationEffect()
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.SelectCollection):
 		collections := m.server.getCollections()
-		m.listSelection = listSelection{title: "select collection", items: make([]listSelectionItem, 0), selected: 0}
-		log.Println("got collections ", collections)
+		m.selectableList = selectableList{title: "select collection", items: make([]selectableListItem, 0), selected: 0}
 		for _, collection := range collections {
-			m.listSelection.items = append(m.listSelection.items, collection)
+			m.selectableList.items = append(m.selectableList.items, collection)
 		}
 		m.windowType = ListSelectionWindow
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
@@ -578,8 +598,6 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 				m.viewport.GotoTop()
 				m.server.changeDir(choice.path)
 			}
-		} else {
-			m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
 		}
 	default:
 		switch msg.String() {
@@ -600,7 +618,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m = m.handleWindowResize(msg)
 	case tea.KeyMsg:
-		// Making this a switch so it's easy if we change to more window types later
 		switch m.windowType {
 		case FormWindow:
 			m, cmd = m.handleFormKey(msg, cmd)
@@ -633,6 +650,7 @@ type dirEntryWithTags struct {
 	isDir bool
 }
 
+// A string representing the collection tags associated with a directory entry
 func (d dirEntryWithTags) displayTags() string {
 	first := true
 	resp := ""
@@ -647,11 +665,12 @@ func (d dirEntryWithTags) displayTags() string {
 	return resp
 }
 
+// A user
 type user struct {
-	id                 int
-	name               string
-	selectedCollection *collection
-	autoAudition       bool
+	id               int
+	name             string
+	targetCollection *collection
+	autoAudition     bool
 }
 
 // Struct holding the app's configuration
@@ -748,11 +767,12 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
-	log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.selectedCollection.name)
-	s._updateChoices()
+	log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.targetCollection.name)
+	s.updateChoices()
 	return &s
 }
 
+// Grab an index of some audio file within the current directory
 func (s *server) getRandomAudioFileIndex() int {
 	if len(s.choices) == 0 {
 		return -1
@@ -766,7 +786,8 @@ func (s *server) getRandomAudioFileIndex() int {
 	return possibleIndexes[rand.Intn(len(possibleIndexes))]
 }
 
-func (s *server) _updateChoices() {
+// Populate the choices array with the current directory's contents
+func (s *server) updateChoices() {
 	if s.currentDir != s.root {
 		s.choices = make([]dirEntryWithTags, 0)
 		dirEntries := s.listDirEntries()
@@ -778,38 +799,45 @@ func (s *server) _updateChoices() {
 	}
 }
 
+// Set the current user's auto audition preference and update in db
 func (s *server) updateAutoAudition(autoAudition bool) {
 	s.currentUser.autoAudition = autoAudition
 	s.updateAutoAuditionInDb(autoAudition)
 }
 
-func (s *server) updateSelectedCollection(collection collection) {
-	s.currentUser.selectedCollection = &collection
+// Set the current user's target collection and update in db
+func (s *server) updateTargetCollection(collection collection) {
+	s.currentUser.targetCollection = &collection
 	s.updateSelectedCollectionInDb(collection.id)
 }
 
-func (s *server) getWholeCurrentDir() string {
+// Get the full path of the current directory
+func (s *server) getCurrentDirPath() string {
 	return filepath.Join(s.root, s.currentDir)
 }
 
+// Change the current directory
 func (s *server) changeDir(dir string) {
 	log.Println("Changing to dir: ", dir)
 	s.currentDir = filepath.Join(s.currentDir, dir)
 	log.Println("Current dir: ", s.currentDir)
-	s._updateChoices()
+	s.updateChoices()
 }
 
+// Change the current directory to the root
 func (s *server) changeToRoot() {
 	s.currentDir = s.root
-	s._updateChoices()
+	s.updateChoices()
 }
 
+// Change the current directory to the parent directory
 func (s *server) changeToParentDir() {
 	log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
 	s.currentDir = filepath.Dir(s.currentDir)
-	s._updateChoices()
+	s.updateChoices()
 }
 
+// Return only directories and valid audio files
 func (s *server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	dirs := make([]os.DirEntry, 0)
 	files := make([]os.DirEntry, 0)
@@ -829,6 +857,7 @@ func (s *server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	return append(dirs, files...)
 }
 
+// Standard function for getting the necessary files from a dir with their associated tags
 func (s *server) listDirEntries() []dirEntryWithTags {
 	files, err := os.ReadDir(s.currentDir)
 	if err != nil {
@@ -878,6 +907,7 @@ where t.file_path like '?%'`
 	return tags
 }
 
+// Get all users
 func (s *server) getUsers() []user {
 	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition from User u left join Collection c on u.selected_collection = c.id`
 	rows, err := s.db.Query(statement)
@@ -902,11 +932,12 @@ func (s *server) getUsers() []user {
 		} else {
 			selectedCollection = &collection{id: 0, name: "", description: ""}
 		}
-		users = append(users, user{id: id, name: name, autoAudition: autoAudition, selectedCollection: selectedCollection})
+		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection})
 	}
 	return users
 }
 
+// Create a user in the database
 func (s *server) createUser(name string) int {
 	res, err := s.db.Exec("insert ignore into User (name) values (?)", name)
 	if err != nil {
@@ -919,6 +950,7 @@ func (s *server) createUser(name string) int {
 	return int(id)
 }
 
+// Update the current user's selected collection in the database
 func (s *server) updateSelectedCollectionInDb(collection int) {
 	_, err := s.db.Exec("update User set selected_collection = ? where id = ?", collection, s.currentUser.id)
 	if err != nil {
@@ -926,6 +958,7 @@ func (s *server) updateSelectedCollectionInDb(collection int) {
 	}
 }
 
+// Update the current user's auto audition preference in the database
 func (s *server) updateAutoAuditionInDb(autoAudition bool) {
 	_, err := s.db.Exec("update User set auto_audition = ? where id = ?", autoAudition, s.currentUser.id)
 	if err != nil {
@@ -933,6 +966,7 @@ func (s *server) updateAutoAuditionInDb(autoAudition bool) {
 	}
 }
 
+// Update the current user's name in the database
 func (s *server) updateUsername(id int, name string) {
 	_, err := s.db.Exec("update User set name = ? where id = ?", name, id)
 	if err != nil {
@@ -940,6 +974,7 @@ func (s *server) updateUsername(id int, name string) {
 	}
 }
 
+// Create a collection in the database
 func (s *server) createCollection(name string, description string) int {
 	var err error
 	var res sql.Result
@@ -954,24 +989,29 @@ func (s *server) createCollection(name string, description string) int {
 	return int(id)
 }
 
+// A collection
 type collection struct {
 	id          int
 	name        string
 	description string
 }
 
+// Requirement for a listSelectionItem
 func (c collection) Id() int {
 	return c.id
 }
 
+// Requirement for a listSelectionItem
 func (c collection) Name() string {
 	return c.name
 }
 
+// Requirement for a listSelectionItem
 func (c collection) Description() string {
 	return c.description
 }
 
+// Get all collections for the current user
 func (s *server) getCollections() []collection {
 	statement := `select id, name, description from Collection where user_id = ?`
 	rows, err := s.db.Query(statement, s.currentUser.id)
@@ -993,21 +1033,24 @@ func (s *server) getCollections() []collection {
 	return collections
 }
 
-func (s *server) updateCollectionName(id int, name string) {
+// Update a collection's name in the database
+func (s *server) updateCollectionNameInDb(id int, name string) {
 	_, err := s.db.Exec("update Collection set name = ? where id = ?", name, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 }
 
-func (s *server) updateCollectionDescription(id int, description string) {
+// Requirement for a listSelectionItem
+func (s *server) updateCollectionDescriptionInDb(id int, description string) {
 	_, err := s.db.Exec("update Collection set description = ? where id = ?", description, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 }
 
-func (s *server) createTag(filePath string) int {
+// Create a tag in the database
+func (s *server) createTagInDb(filePath string) int {
 	res, err := s.db.Exec("insert ignore into Tag (file_path, user_id) values (?)", filePath, s.currentUser.id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -1019,7 +1062,8 @@ func (s *server) createTag(filePath string) int {
 	return int(id)
 }
 
-func (s *server) addTagToCollection(tagId int, collectionId int, name string, subCollection *string) {
+// Add a tag to a collection in the database
+func (s *server) addTagToCollectionInDb(tagId int, collectionId int, name string, subCollection *string) {
 	var err error
 	if subCollection == nil {
 		_, err = s.db.Exec("insert ignore into CollectionTag (tag_id, collection_id) values (?, ?)", tagId, collectionId)
@@ -1032,18 +1076,23 @@ func (s *server) addTagToCollection(tagId int, collectionId int, name string, su
 }
 
 // ////////////////////// AUDIO HANDLING ////////////////////////
+
+// Audio file type enum
 type audioFileType int
 
+// Audio file type enum values
 const (
 	MP3 audioFileType = iota
 	WAV
 	FLAC
 )
 
+// String representation of an audio file type
 func (a *audioFileType) String() string {
 	return [...]string{"mp3", "wav", "flac"}[*a]
 }
 
+// Construct an audio file type from a string
 func (a *audioFileType) fromExtension(s string) {
 	switch s {
 	case ".mp3":
@@ -1057,6 +1106,7 @@ func (a *audioFileType) fromExtension(s string) {
 	}
 }
 
+// Audio player struct
 type AudioPlayer struct {
 	format          beep.Format
 	currentStreamer beep.StreamSeekCloser
@@ -1064,11 +1114,13 @@ type AudioPlayer struct {
 	playing         bool
 }
 
+// Push a play command to the audio player's commands channel
 func (a *AudioPlayer) pushPlayCommand(path string) {
 	log.Println("Pushing play command", path)
 	a.commands <- path
 }
 
+// Construct the audio player
 func NewAudioPlayer() *AudioPlayer {
 	sampleRate := beep.SampleRate(48000)
 	format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
@@ -1084,6 +1136,7 @@ func NewAudioPlayer() *AudioPlayer {
 	return &player
 }
 
+// Close the audio player
 func (a *AudioPlayer) Close() {
 	speaker.Lock()
 	if a.currentStreamer != nil {
@@ -1093,6 +1146,7 @@ func (a *AudioPlayer) Close() {
 	speaker.Close()
 }
 
+// Get a streamer which will buffer playback of one file
 func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
@@ -1112,6 +1166,7 @@ func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 	return streamer, format, nil
 }
 
+// Close the current streamer
 func (a *AudioPlayer) CloseStreamer() {
 	if a.currentStreamer != nil {
 		a.currentStreamer.Close()
@@ -1119,6 +1174,7 @@ func (a *AudioPlayer) CloseStreamer() {
 	a.currentStreamer = nil
 }
 
+// Handle a play command arriving in the audio player's commands channel
 func (a *AudioPlayer) handlePlayCommnad(path string) {
 	log.Println("Handling play command", path)
 	f, err := os.Open(path)
@@ -1145,6 +1201,7 @@ func (a *AudioPlayer) handlePlayCommnad(path string) {
 	<-done
 }
 
+// Run the audio player, feeding it paths as play commands
 func (a *AudioPlayer) Run() {
 	for {
 		select {
@@ -1156,6 +1213,7 @@ func (a *AudioPlayer) Run() {
 
 }
 
+// Play one audio file. If another file is already playing, close the current streamer and play the new file.
 func (a *AudioPlayer) PlayAudioFile(path string) {
 	if a.playing {
 		// Close current streamer with any necessary cleanup
@@ -1171,6 +1229,7 @@ type App struct {
 	logFile        *os.File
 }
 
+// Construct the app
 func NewApp() App {
 	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -1181,11 +1240,12 @@ func NewApp() App {
 	server := newServer(audioPlayer)
 	return App{
 		server:         server,
-		bubbleTeaModel: initialModel(server),
+		bubbleTeaModel: excavatorModel(server),
 		logFile:        f,
 	}
 }
 
+// chris_brown_run_it.ogg
 func main() {
 	app := NewApp()
 	defer app.logFile.Close()
