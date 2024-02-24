@@ -28,19 +28,19 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [ ] create collections, which are ephemeral directories stored in (maybe apple pickle?) data types designed to be able to collection to a concrete directory you can drag-and-drop elsewhere.
 - [ ] create tags that assign the samples to sub-directory in a collection. these should not copy the file, but create a reference in the locally stored file.
 - [x] browse samples using J/up arrow and K/down arrow.
+- [x] samples should play asynchronously so the user can continue browsing while a sample plays
+- [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
 - [x] press Q to quit.
 - [x] press A to audition a sample you're hovering over.
-- [x] samples should play asynchronously so the user can continue browsing while a sample plays
 - [ ] press R to jump to and audition a random sample from the current directory.
-- [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
-- [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
-- [ ] press shift-A to toggle auto-audition mode.
+- [x] press shift-A to toggle auto-audition mode.
 - [x] press shift-N to create a new collection
 - [x] press shift-C to change the target collection
+- [ ] press enter or I on a sample to open a textbox that recursively searches the selected target collection for a directory.
 - [ ] press shift-D to create a new directory in the target collection. this should open a hovering window over the sample browser where you can navigate to a subdirectory and create a new directory.
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
 - [ ] press shift-T to change the target collection when browsing samples.
-- [ ] press shift-E to collection the current target collection to its output directory (should just replace the whole directory destructively at first).
+- [ ] press shift-E to export the current target collection to its output directory (should just replace the whole directory destructively at first).
 - [ ] press shift-K on a sample to get a list of all of its tagged locations in a hover box.
 
 ### further extensions

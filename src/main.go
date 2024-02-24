@@ -51,21 +51,22 @@ func (k *keymapHacks) lastKeyWasG() bool {
 }
 
 type KeyMap struct {
-	Up               key.Binding
-	Down             key.Binding
-	Quit             key.Binding
-	JumpUp           key.Binding
-	JumpDown         key.Binding
-	JumpBottom       key.Binding
-	Audition         key.Binding
-	Enter            key.Binding
-	NewCollection    key.Binding
-	SelectCollection key.Binding
-	InsertMode       key.Binding
+	Up                 key.Binding
+	Down               key.Binding
+	Quit               key.Binding
+	JumpUp             key.Binding
+	JumpDown           key.Binding
+	JumpBottom         key.Binding
+	Audition           key.Binding
+	Enter              key.Binding
+	NewCollection      key.Binding
+	SelectCollection   key.Binding
+	InsertMode         key.Binding
+	ToggleAutoAudition key.Binding
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.NewCollection, k.SelectCollection}
+	return []key.Binding{k.Quit, k.Up, k.Down, k.JumpUp, k.JumpDown, k.Audition, k.NewCollection, k.SelectCollection, k.ToggleAutoAudition}
 }
 
 // Short help only
@@ -119,6 +120,10 @@ var DefaultKeyMap = KeyMap{
 	SelectCollection: key.NewBinding(
 		key.WithKeys("C"),
 		key.WithHelp("C", "select collection"),
+	),
+	ToggleAutoAudition: key.NewBinding(
+		key.WithKeys("A"),
+		key.WithHelp("A", "auto audition"),
 	),
 }
 
@@ -288,6 +293,8 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		m.windowType = DirectoryWalker
 		m.listSelection.items = make([]listSelectionItem, 0)
 		m.server._updateChoices()
+	case key.Matches(msg, m.keys.ToggleAutoAudition):
+		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
 		switch m.listSelection.title {
 		case "select collection":
@@ -334,6 +341,8 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 			m.listSelection.items = append(m.listSelection.items, collection)
 		}
 		m.windowType = ListSelectionWindow
+	case key.Matches(msg, m.keys.ToggleAutoAudition):
+		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
 		for i, input := range m.form.inputs {
 			if input.input.Value() == "" {
@@ -378,14 +387,21 @@ func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) auditionCurrentlySelectedFile() {
+	choice := m.server.choices[m.cursor]
+	if !choice.isDir {
+		go m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+	}
+}
+
 // Handle a single key press
-func (m model) handleContentKey(msg tea.KeyMsg) model {
-    // if m.server.currentUser.selectedCollection != nil {
-    //     log.Printf("Handling content key user id: %s selected collection: %s", m.server.currentUser.name, m.server.currentUser.selectedCollection.name)
-    //
-    // } else {
-    //     log.Printf("Handling content key user id: %s", m.server.currentUser.name)
-    // }
+func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
+	if m.server.currentUser.selectedCollection != nil {
+        log.Printf("Handling content key user id: %s selected collection: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.selectedCollection.name, m.server.currentUser.autoAudition)
+
+	} else {
+        log.Printf("Handling content key user id: %s, auto audition: %t", m.server.currentUser.name, m.server.currentUser.autoAudition)
+	}
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		m.quitting = true
@@ -394,30 +410,42 @@ func (m model) handleContentKey(msg tea.KeyMsg) model {
 		if m.cursor > 0 {
 			m.cursor--
 		}
+        if m.server.currentUser.autoAudition {
+            m.auditionCurrentlySelectedFile()
+        }
 	case key.Matches(msg, m.keys.Down):
 		if m.cursor < len(m.server.choices)-1 {
 			m.cursor++
 		}
+        if m.server.currentUser.autoAudition {
+            m.auditionCurrentlySelectedFile()
+        }
 	case key.Matches(msg, m.keys.JumpDown):
 		if m.cursor < len(m.server.choices)-8 {
 			m.cursor += 8
 		} else {
 			m.cursor = len(m.server.choices) - 1
 		}
+        if m.server.currentUser.autoAudition {
+            m.auditionCurrentlySelectedFile()
+        }
 	case key.Matches(msg, m.keys.JumpUp):
 		if m.cursor > 8 {
 			m.cursor -= 8
 		} else {
 			m.cursor = 0
 		}
+        if m.server.currentUser.autoAudition {
+            m.auditionCurrentlySelectedFile()
+        }
 	case key.Matches(msg, m.keys.Audition):
-		choice := m.server.choices[m.cursor]
-		if !choice.isDir {
-			go m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
-		}
+        m.auditionCurrentlySelectedFile()
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
+        if m.server.currentUser.autoAudition {
+            m.auditionCurrentlySelectedFile()
+        }
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
@@ -429,6 +457,8 @@ func (m model) handleContentKey(msg tea.KeyMsg) model {
 			m.listSelection.items = append(m.listSelection.items, collection)
 		}
 		m.windowType = ListSelectionWindow
+	case key.Matches(msg, m.keys.ToggleAutoAudition):
+		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
 		choice := m.server.choices[m.cursor]
 		if choice.isDir {
@@ -547,7 +577,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ListSelectionWindow:
 			m, cmd = m.handleListSelectionKey(msg, cmd)
 		case DirectoryWalker:
-			m = m.handleContentKey(msg)
+			m = m.handleDirectoryKey(msg)
 			if m.quitting {
 				return m, tea.Quit
 			}
@@ -607,6 +637,7 @@ type user struct {
 	id                 int
 	name               string
 	selectedCollection *collection
+	autoAudition       bool
 }
 
 // Struct holding the app's configuration
@@ -703,7 +734,7 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
-    log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.selectedCollection.name)
+	log.Printf("Current user: %v, selected collection: %v", s.currentUser, s.currentUser.selectedCollection.name)
 	s._updateChoices()
 	return &s
 }
@@ -718,6 +749,11 @@ func (s *server) _updateChoices() {
 	} else {
 		s.choices = s.listDirEntries()
 	}
+}
+
+func (s *server) updateAutoAudition(autoAudition bool) {
+	s.currentUser.autoAudition = autoAudition
+	s.updateAutoAuditionInDb(autoAudition)
 }
 
 func (s *server) updateSelectedCollection(collection collection) {
@@ -816,7 +852,7 @@ where t.file_path like '?%'`
 }
 
 func (s *server) getUsers() []user {
-	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description from User u left join Collection c on u.selected_collection = c.id`
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition from User u left join Collection c on u.selected_collection = c.id`
 	rows, err := s.db.Query(statement)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
@@ -829,16 +865,17 @@ func (s *server) getUsers() []user {
 		var collectionId *int
 		var collectionName *string
 		var collectionDescription *string
-		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription); err != nil {
+		var autoAudition bool
+		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		var selectedCollection *collection
 		if collectionId != nil && collectionName != nil && collectionDescription != nil {
 			selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
 		} else {
-            selectedCollection = &collection{id: 0, name: "", description: ""}
-        }
-		users = append(users, user{id: id, name: name, selectedCollection: selectedCollection})
+			selectedCollection = &collection{id: 0, name: "", description: ""}
+		}
+		users = append(users, user{id: id, name: name, autoAudition: autoAudition, selectedCollection: selectedCollection})
 	}
 	return users
 }
@@ -859,6 +896,13 @@ func (s *server) updateSelectedCollectionInDb(collection int) {
 	_, err := s.db.Exec("update User set selected_collection = ? where id = ?", collection, s.currentUser.id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSelectedCollectionInDb: %v", err)
+	}
+}
+
+func (s *server) updateAutoAuditionInDb(autoAudition bool) {
+	_, err := s.db.Exec("update User set auto_audition = ? where id = ?", autoAudition, s.currentUser.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in updateAutoAuditionInDb: %v", err)
 	}
 }
 
