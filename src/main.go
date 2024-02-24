@@ -226,9 +226,7 @@ func getNewCollectionForm() form {
 	return newForm("create collection", getNewCollectionInputs())
 }
 
-
 /// List selection ///
-
 
 // Interface for list selection items so the list can easily be reused
 type selectableListItem interface {
@@ -246,17 +244,19 @@ type selectableList struct {
 
 // A generic model defining app behaviour in all states
 type model struct {
-	ready         bool
-	quitting      bool
-	cursor        int
-	prevCursor    int
-	keys          KeyMap
-	keyHack       keymapHacks
-	server        *server
-	viewport      viewport.Model
-	help          help.Model
-	windowType    windowType
-	form          form
+	ready          bool
+	quitting       bool
+	cursor         int
+	prevCursor     int
+	viewportHeight int
+	viewportWidth  int
+	keys           KeyMap
+	keyHack        keymapHacks
+	server         *server
+	viewport       viewport.Model
+	help           help.Model
+	windowType     windowType
+	form           form
 	selectableList selectableList
 }
 
@@ -342,6 +342,7 @@ func (m model) directoryView() string {
 	return s
 }
 
+// Necessary for bubbletea model interface
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -351,9 +352,12 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	headerHeight := lipgloss.Height(m.headerView())
 	footerHeight := lipgloss.Height(m.footerView())
 	verticalMarginHeight := headerHeight + footerHeight
+	listItemStyleHeight := 2 // TODO: make this better
 	if !m.ready {
 		// Instantiate a viewport when the program starts
-		m.viewport = viewport.New(msg.Width, (msg.Height)-verticalMarginHeight)
+		m.viewportWidth = msg.Width
+		m.viewportHeight = (msg.Height - verticalMarginHeight) / listItemStyleHeight
+		m.viewport = viewport.New(msg.Width, (msg.Height - verticalMarginHeight))
 		m.viewport.SetContent(m.directoryView())
 		m.ready = true
 	} else {
@@ -363,20 +367,43 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	return m
 }
 
+// Handle viewport positioning
+func (m model) ensureCursorVerticallyCentered() viewport.Model {
+	viewport := m.viewport
+	itemHeight := 2
+	cursorPosition := m.cursor * itemHeight
+	viewportHeight := viewport.Height
+	viewport.YOffset = (cursorPosition - viewportHeight + itemHeight) + (viewportHeight / 2)
+	if viewport.PastBottom() {
+		viewport.GotoBottom()
+	}
+	if viewport.YOffset < 0 {
+		viewport.YOffset = 0
+	}
+	return viewport
+}
+
+// Helper function to find the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // Set the content of the viewport based on the window type
 func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch m.windowType {
 	case FormWindow:
 		m.viewport.SetContent(m.formView())
 	case DirectoryWalker:
+		m.viewport = m.ensureCursorVerticallyCentered()
 		m.viewport.SetContent(m.directoryView())
 	case ListSelectionWindow:
 		m.viewport.SetContent(m.listSelectionView())
 	default:
 		m.viewport.SetContent("Invalid window type")
 	}
-
-	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
 
@@ -526,7 +553,7 @@ func (m model) auditionCurrentlySelectedFile() {
 }
 
 // These functions should run every time the cursor moves in directory view
-func (m model) directoryNavigationEffect() {
+func (m model) dirVerticalNavEffect() {
 	if m.server.currentUser.autoAudition {
 		m.auditionCurrentlySelectedFile()
 	}
@@ -542,38 +569,38 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		if m.cursor > 0 {
 			m.cursor--
 		}
-		m.directoryNavigationEffect()
+		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.Down):
 		if m.cursor < len(m.server.choices)-1 {
 			m.cursor++
 		}
-		m.directoryNavigationEffect()
+		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.JumpDown):
 		if m.cursor < len(m.server.choices)-8 {
 			m.cursor += 8
 		} else {
 			m.cursor = len(m.server.choices) - 1
 		}
-		m.directoryNavigationEffect()
+		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.JumpUp):
 		if m.cursor > 8 {
 			m.cursor -= 8
 		} else {
 			m.cursor = 0
 		}
-		m.directoryNavigationEffect()
+		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.Audition):
 		m.auditionCurrentlySelectedFile()
 	case key.Matches(msg, m.keys.AuditionRandom):
 		fileIndex := m.server.getRandomAudioFileIndex()
 		if fileIndex != -1 {
 			m.cursor = fileIndex
-			m.directoryNavigationEffect()
+			m.dirVerticalNavEffect()
 		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
-		m.directoryNavigationEffect()
+		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
@@ -591,19 +618,21 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		if choice.isDir {
 			if choice.path == ".." {
 				m.cursor = 0
-				m.viewport.GotoTop()
+				// m.viewport.GotoTop()
 				m.server.changeToParentDir()
+				m.dirVerticalNavEffect()
 			} else {
 				m.cursor = 0
-				m.viewport.GotoTop()
+				// m.viewport.GotoTop()
 				m.server.changeDir(choice.path)
+				m.dirVerticalNavEffect()
 			}
 		}
 	default:
 		switch msg.String() {
 		case "g":
 			if m.keyHack.getLastKey() == "g" {
-				m.viewport.GotoTop()
+				// m.viewport.GotoTop()
 				m.cursor = 0
 			}
 		}
