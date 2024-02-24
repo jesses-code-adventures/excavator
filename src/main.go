@@ -379,6 +379,10 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 
 // Handle viewport positioning
 func (m model) ensureCursorVerticallyCentered() viewport.Model {
+	if m.windowType != DirectoryWalker {
+		m.viewport.GotoTop()
+		return m.viewport
+	}
 	viewport := m.viewport
 	itemHeight := 2
 	cursorPosition := m.cursor * itemHeight
@@ -449,14 +453,14 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		if m.selectableList.selected < 0 {
 			m.selectableList.selected = len(m.selectableList.items) - 1
 		}
-	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection):
-		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.NewCollection):
 		m.selectableList.items = make([]selectableListItem, 0)
 		m.form = getNewCollectionForm()
+		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
-		m.windowType = DirectoryWalker
 		m.selectableList.items = make([]selectableListItem, 0)
 		m.server.updateChoices()
+		m.windowType = DirectoryWalker
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
@@ -606,6 +610,9 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		if fileIndex != -1 {
 			m.cursor = fileIndex
 			m.dirVerticalNavEffect()
+		}
+		if !m.server.currentUser.autoAudition {
+			m.auditionCurrentlySelectedFile()
 		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
@@ -832,7 +839,6 @@ func (s *server) updateChoices() {
 		dirEntries := s.listDirEntries()
 		s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
 		s.choices = append(s.choices, dirEntries...)
-		log.Println("Choices: ", s.choices)
 	} else {
 		s.choices = s.listDirEntries()
 	}
