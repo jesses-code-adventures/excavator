@@ -332,12 +332,22 @@ func (m model) listSelectionView() string {
 func (m model) directoryView() string {
 	s := ""
 	for i, choice := range m.server.choices {
+		var newLine string
 		if m.cursor == i {
 			cursor := "-->"
-			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.path, choice.displayTags()), fmt.Sprintf("    %v", choice.displayTags()))
+			newLine = fmt.Sprintf("%s %s", cursor, choice.path)
 		} else {
-			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.path))
+			newLine = fmt.Sprintf("     %s", choice.path)
 		}
+		if len(newLine) > m.viewport.Width {
+			newLine = newLine[:m.viewport.Width-2]
+		}
+		if m.cursor == i {
+			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.displayTags()))
+		} else {
+			newLine = unselectedStyle.Render(newLine)
+		}
+		s += newLine
 	}
 	return s
 }
