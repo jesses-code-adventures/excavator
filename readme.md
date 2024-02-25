@@ -38,10 +38,10 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] press shift-A to toggle auto-audition mode.
 - [x] press shift-N to create a new collection.
 - [x] press shift-C to change the target collection.
-- [ ] press shift-D to change the target directory in the current collection. this should be a searchable list, and if enter is pressed with no matches it should create a new one.
+- [x] press shift-D to change the target directory in the current collection. this should be a searchable list, and if enter is pressed with no matches it should create a new one.
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
 - [ ] press shift-E to export the current target collection using an export (should just replace the whole directory destructively at first).
-- [ ] press shift-K on a sample to get a list of all of its tagged locations in a hover box.
+- [ ] press shift-K to toggle showing collection tags for all samples
 
 ### further extensions
 - [ ] ability to read in a session and create a collection of every sample that's referenced in the session.

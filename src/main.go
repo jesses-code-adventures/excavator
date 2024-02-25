@@ -64,6 +64,7 @@ type KeyMap struct {
 	JumpDown               key.Binding
 	JumpBottom             key.Binding
 	Audition               key.Binding
+	SearchBuf              key.Binding
 	Enter                  key.Binding
 	NewCollection          key.Binding
 	SelectCollection       key.Binding
@@ -77,7 +78,7 @@ type KeyMap struct {
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SelectCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag}
+	return []key.Binding{k.Quit, k.Audition, k.SearchBuf, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SelectCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag}
 }
 
 // Empty because not using
@@ -153,31 +154,40 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("T"),
 		key.WithHelp("T", "editable tag"),
 	),
+	SearchBuf: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "search window"),
+	),
 }
 
 // ////////////////////// UI ////////////////////////
 
 // All styles to be used throughout the ui
 var (
-	green    = lipgloss.Color("#25A065")
-	pink     = lipgloss.Color("#E441B5")
-	white    = lipgloss.Color("#FFFDF5")
+	// colours
+	green = lipgloss.Color("#25A065")
+	pink  = lipgloss.Color("#E441B5")
+	white = lipgloss.Color("#FFFDF5")
+	// App
 	appStyle = lipgloss.NewStyle().
 			Padding(1, 1)
 	titleStyle = lipgloss.NewStyle().
 			Foreground(white).
 			Background(green).
-			Padding(1, 1)
+			Padding(1, 1).
+			Height(3)
+	// Directory Walker
+	viewportStyle = lipgloss.NewStyle()
 	selectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder()).
 			Foreground(pink)
 	unselectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder())
-	bottomTextBoxesStyle = lipgloss.NewStyle().
-				BorderTop(true).
-				Height(8).
-				Width(255)
-	viewportStyle  = lipgloss.NewStyle()
+		// Form
+	formStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Border(lipgloss.RoundedBorder()).
+			Margin(0, 0, 0)
 	unfocusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Background(lipgloss.Color("236")).
@@ -186,13 +196,18 @@ var (
 			Border(lipgloss.HiddenBorder())
 	focusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
+			Background(lipgloss.Color("236")).
 			Width(100).
-			Margin(1, 1).
-			Background(lipgloss.Color("236"))
-	formStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Border(lipgloss.RoundedBorder()).
-			Margin(0, 0, 0)
+			Margin(1, 1)
+		// Searchable list
+	searchableListItemsStyle = lipgloss.NewStyle().
+					Border(lipgloss.HiddenBorder())
+	searchInputBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.HiddenBorder()).
+				AlignVertical(lipgloss.Bottom).
+				AlignHorizontal(lipgloss.Left)
+	searchableSelectableListStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder())
 )
 
 // A singular form input control
@@ -282,27 +297,62 @@ type selectableListItem interface {
 
 // A list where a single item can be selected
 type selectableList struct {
-	title    string
-	items    []selectableListItem
-	selected int
+	title       string
+	items       []selectableListItem
+	selected    int
+	listFocused bool
+}
+
+type searchableSelectableList struct {
+	title          string
+	selectableList selectableList
+	search         formInput
+}
+
+func newSearchableList(title string, items []selectableListItem) searchableSelectableList {
+	return searchableSelectableList{
+		title: title,
+		selectableList: selectableList{
+			title:    title,
+			items:    items,
+			selected: 0,
+		},
+		search: formInput{
+			name:  "search",
+			input: textinput.New(),
+		},
+	}
+}
+
+func (m model) filterListItems() model {
+	log.Printf("filtering list items - prev %v", m.searchableSelectableList.selectableList.items)
+	resp := m.server.searchCollectionSubcollecitons(m.searchableSelectableList.search.input.Value())
+	newArray := make([]selectableListItem, 0)
+	for _, item := range resp {
+		newArray = append(newArray, item)
+	}
+	m.searchableSelectableList.selectableList.items = newArray
+	log.Printf("filtering list items - post %v", m.searchableSelectableList.selectableList.items)
+	return m
 }
 
 // A generic model defining app behaviour in all states
 type model struct {
-	ready          bool
-	quitting       bool
-	cursor         int
-	prevCursor     int
-	viewportHeight int
-	viewportWidth  int
-	keys           KeyMap
-	keyHack        keymapHacks
-	server         *server
-	viewport       viewport.Model
-	help           help.Model
-	windowType     windowType
-	form           form
-	selectableList selectableList
+	ready                    bool
+	quitting                 bool
+	cursor                   int
+	prevCursor               int
+	viewportHeight           int
+	viewportWidth            int
+	keys                     KeyMap
+	keyHack                  keymapHacks
+	server                   *server
+	viewport                 viewport.Model
+	help                     help.Model
+	windowType               windowType
+	form                     form
+	selectableList           selectableList
+	searchableSelectableList searchableSelectableList
 }
 
 // Different window types
@@ -312,6 +362,7 @@ const (
 	DirectoryWalker windowType = iota
 	FormWindow
 	ListSelectionWindow
+	SearchableSelectableList
 )
 
 // Constructor for the app's model
@@ -332,6 +383,23 @@ func (m model) headerView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
+// Display key info to user
+func (m model) getStatusDisplay() string {
+	termWidth := m.viewport.Width
+    msg := fmt.Sprintf("Collection: %v, Subcollection: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection)
+	padding := (termWidth - len(msg)) / 2
+	if padding < 0 {
+		padding = 0
+	}
+	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding).
+        Foreground(lipgloss.AdaptiveColor{
+		Light: "#B2B2B2",
+		Dark:  "#4A4A4A",
+	    }).
+        Render(msg)
+	return paddedHelpStyle
+}
+
 // Get the footer of the view
 func (m model) footerView() string {
 	helpText := m.help.View(m.keys)
@@ -343,7 +411,7 @@ func (m model) footerView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
-	return centeredHelpText
+	return centeredHelpText + "\n" + m.getStatusDisplay()
 }
 
 // Formview handler
@@ -371,6 +439,21 @@ func (m model) listSelectionView() string {
 		}
 	}
 	return s
+}
+
+// Modify the searchableListView function to exclude the search input
+func (m model) searchableListView() string {
+	s := ""
+	for i, choice := range m.searchableSelectableList.selectableList.items {
+		if i == m.cursor {
+			cursor := "-->"
+			s += selectedStyle.Render(fmt.Sprintf("%s %s    %v", cursor, choice.Name(), choice.Description()))
+		} else {
+			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.Name()))
+		}
+	}
+	// Note: We no longer add the search input here
+	return searchableListItemsStyle.Render(s)
 }
 
 // Standard content handler
@@ -402,25 +485,44 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
-// Ui updating for window resize events
+// // Ui updating for window resize events
 func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 	headerHeight := lipgloss.Height(m.headerView())
 	footerHeight := lipgloss.Height(m.footerView())
-	verticalMarginHeight := headerHeight + footerHeight
-	listItemStyleHeight := 2 // TODO: make this better
-	if !m.ready {
-		// Instantiate a viewport when the program starts
-		m.viewportWidth = msg.Width
-		m.viewportHeight = (msg.Height - verticalMarginHeight) / listItemStyleHeight
-		m.viewport = viewport.New(msg.Width, (msg.Height - verticalMarginHeight))
-		m.viewport.SetContent(m.directoryView())
-		m.ready = true
+	searchInputHeight := 2 // Assuming the search input height is approximately 2 lines
+	verticalPadding := 2   // Adjust based on your app's padding around the viewport
+	// Calculate available height differently if in SearchableSelectableList mode
+	if m.windowType == SearchableSelectableList {
+		m.viewportHeight = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
 	} else {
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - verticalMarginHeight
+		m.viewportHeight = msg.Height - headerHeight - footerHeight - verticalPadding
 	}
+
+	m.viewport.Width = msg.Width
+	m.viewport.Height = m.viewportHeight
+	m.ready = true
+
 	return m
 }
+
+// func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
+// 	headerHeight := lipgloss.Height(m.headerView())
+// 	footerHeight := lipgloss.Height(m.footerView())
+// 	verticalMarginHeight := headerHeight + footerHeight
+// 	listItemStyleHeight := 2 // TODO: make this better
+// 	if !m.ready {
+// 		// Instantiate a viewport when the program starts
+// 		m.viewportWidth = msg.Width
+// 		m.viewportHeight = (msg.Height - verticalMarginHeight) / listItemStyleHeight
+// 		m.viewport = viewport.New(msg.Width, (msg.Height - verticalMarginHeight))
+// 		m.viewport.SetContent(m.directoryView())
+// 		m.ready = true
+// 	} else {
+// 		m.viewport.Width = msg.Width
+// 		m.viewport.Height = msg.Height - verticalMarginHeight
+// 	}
+// 	return m
+// }
 
 // Handle viewport positioning
 func (m model) ensureCursorVerticallyCentered() viewport.Model {
@@ -460,27 +562,35 @@ func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
 		m.viewport.SetContent(m.directoryView())
 	case ListSelectionWindow:
 		m.viewport.SetContent(m.listSelectionView())
+	case SearchableSelectableList:
+		m.viewport = m.ensureCursorVerticallyCentered()
+		m.viewport.SetContent(m.searchableListView())
 	default:
 		m.viewport.SetContent("Invalid window type")
 	}
 	return m, cmd
 }
 
-// Render the model
+// Handle all view rendering
 func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
+	// Main content view
+	var contentView string
 	switch m.windowType {
-	case FormWindow:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), formStyle.Render(m.formView()), m.footerView()))
-	case DirectoryWalker:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
-	case ListSelectionWindow:
-		return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	case DirectoryWalker, FormWindow, ListSelectionWindow:
+		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView())
+	case SearchableSelectableList:
+		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.searchableListView()), m.footerView())
+		// Append search input directly above the footer
+		// searchInput := m.searchableSelectableList.search.input.View()
+		// contentView += fmt.Sprintf("\n%s\n%s", searchInputBoxStyle.Render(searchInput), m.footerView())
 	default:
-		return "Invalid window type"
+		contentView = "Invalid window type"
 	}
+
+	return appStyle.Render(contentView)
 }
 
 // ////////////////////// UI UPDATING ////////////////////////
@@ -503,7 +613,12 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.SetTargetSubCollection):
-		m.selectableList.items = make([]selectableListItem, 0)
+		items := make([]selectableListItem, 0)
+		subCollections := m.server.getCollectionSubcollections()
+		for _, subCollection := range subCollections {
+			items = append(items, subCollection)
+		}
+		m.searchableSelectableList = newSearchableList("search for subcollection", items)
 		m.form = getTargetSubCollectionForm()
 		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
@@ -523,6 +638,16 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 				log.Fatalf("Invalid list selection item type")
 			}
 		}
+	}
+	return m, cmd
+}
+
+// Form key
+func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	if m.form.writing {
+		m, cmd = m.handleFormWritingKey(msg, cmd)
+	} else {
+		m, cmd = m.handleFormNavigationKey(msg, cmd)
 	}
 	return m, cmd
 }
@@ -592,25 +717,112 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		m.form.writing = false
-		m.form.inputs[m.form.focusedInput].input.Blur()
+		if m.windowType == SearchableSelectableList {
+			m.searchableSelectableList.search.input.Blur()
+			m = m.filterListItems()
+			log.Printf("filtered items in form writing key quit %v", m.searchableSelectableList.selectableList.items)
+			m.cursor = 0
+			m.searchableSelectableList.selectableList.selected = 0
+		} else {
+			m.form.inputs[m.form.focusedInput].input.Blur()
+		}
 	case key.Matches(msg, m.keys.Enter):
 		m.form.writing = false
-		m.form.inputs[m.form.focusedInput].input.Blur()
+		if m.windowType == SearchableSelectableList {
+			m.searchableSelectableList.search.input.Blur()
+			m = m.filterListItems()
+			log.Printf("filtered items in form writing key enter %v", m.searchableSelectableList.selectableList.items)
+			m.cursor = 0
+			m.searchableSelectableList.selectableList.selected = 0
+		} else {
+			m.form.inputs[m.form.focusedInput].input.Blur()
+		}
 	default:
 		var newInput textinput.Model
-		newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
-		m.form.inputs[m.form.focusedInput].input = newInput
-		m.form.inputs[m.form.focusedInput].input.Focus()
+		if m.windowType == SearchableSelectableList {
+			newInput, cmd = m.searchableSelectableList.search.input.Update(msg)
+			m.searchableSelectableList.search.input = newInput
+			m.searchableSelectableList.search.input.Focus()
+			m = m.filterListItems()
+			m.cursor = 0
+			m.searchableSelectableList.selectableList.selected = 0
+		} else {
+			newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
+			m.form.inputs[m.form.focusedInput].input = newInput
+			m.form.inputs[m.form.focusedInput].input.Focus()
+		}
+	}
+	return m, cmd
+}
+
+// List selection navigation
+func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		m.searchableSelectableList.selectableList.selected--
+		if m.searchableSelectableList.selectableList.selected < 0 {
+			m.searchableSelectableList.selectableList.selected = 0
+		}
+		m.cursor = m.searchableSelectableList.selectableList.selected
+	case key.Matches(msg, m.keys.Down):
+		m.searchableSelectableList.selectableList.selected++
+		if m.searchableSelectableList.selectableList.selected > len(m.searchableSelectableList.selectableList.items)-1 {
+			m.searchableSelectableList.selectableList.selected = len(m.searchableSelectableList.selectableList.items) - 1
+		}
+		m.cursor = m.searchableSelectableList.selectableList.selected
+	case key.Matches(msg, m.keys.NewCollection):
+		m.searchableSelectableList = searchableSelectableList{}
+		m.form = getNewCollectionForm()
+		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.SetTargetSubCollection):
+		m.searchableSelectableList = searchableSelectableList{}
+		m.server.updateChoices()
+		m.windowType = DirectoryWalker
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
+		m.searchableSelectableList = searchableSelectableList{}
+		m.server.updateChoices()
+		m.windowType = DirectoryWalker
+	case key.Matches(msg, m.keys.InsertMode) || key.Matches(msg, m.keys.SearchBuf):
+		m.searchableSelectableList.search.input.Focus()
+		m.form.writing = true
+	case key.Matches(msg, m.keys.ToggleAutoAudition):
+		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
+	case key.Matches(msg, m.keys.Enter):
+		switch m.searchableSelectableList.title {
+		case "search for subcollection":
+			if len(m.searchableSelectableList.selectableList.items) == 0 {
+				value := m.searchableSelectableList.search.input.Value()
+				if value == "" {
+					return m, cmd
+				}
+				m.server.updateTargetSubCollection(value)
+				m.searchableSelectableList = searchableSelectableList{}
+				m.windowType = DirectoryWalker
+				return m, cmd
+			}
+			selectedIndex := m.searchableSelectableList.selectableList.selected
+			selected := m.searchableSelectableList.selectableList.items[selectedIndex]
+			log.Printf("selected index: %v", selectedIndex)
+			log.Printf("selected item: %v", selected.Name())
+			if collection, ok := selected.(selectableListItem); ok {
+				log.Printf("selected collection: %v", collection.Name())
+				m.server.updateTargetSubCollection(collection.Name())
+				m.searchableSelectableList = searchableSelectableList{}
+				m.windowType = DirectoryWalker
+			} else {
+				log.Fatalf("Invalid list selection item type")
+			}
+		}
 	}
 	return m, cmd
 }
 
 // Form key
-func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m model) handleSearchableListKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	if m.form.writing {
 		m, cmd = m.handleFormWritingKey(msg, cmd)
 	} else {
-		m, cmd = m.handleFormNavigationKey(msg, cmd)
+		m, cmd = m.handleSearchableListNavKey(msg, cmd)
 	}
 	return m, cmd
 }
@@ -679,8 +891,15 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.SetTargetSubCollection):
+		items := make([]selectableListItem, 0)
+		subCollections := m.server.getCollectionSubcollections()
+		for _, subCollection := range subCollections {
+			items = append(items, subCollection)
+		}
+		m.searchableSelectableList = newSearchableList("search for subcollection", items)
 		m.form = getTargetSubCollectionForm()
-		m.windowType = FormWindow
+		m.cursor = 0
+		m.windowType = SearchableSelectableList
 	case key.Matches(msg, m.keys.SelectCollection):
 		collections := m.server.getCollections()
 		m.selectableList = selectableList{title: "select collection", items: make([]selectableListItem, 0), selected: 0}
@@ -741,6 +960,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.quitting {
 				return m, tea.Quit
 			}
+		case SearchableSelectableList:
+			m, cmd = m.handleSearchableListKey(msg, cmd)
 		}
 		m.keyHack.updateLastKey(msg.String())
 	}
@@ -1233,6 +1454,64 @@ func (s *server) updateTargetSubCollectionInDb(subCollection string) {
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSubCollectionInDb: %v", err)
 	}
+}
+
+type SubCollection struct {
+	name string
+}
+
+func (s SubCollection) Id() int {
+	return 0
+}
+
+func (s SubCollection) Name() string {
+	return s.name
+}
+
+func (s SubCollection) Description() string {
+	return ""
+}
+
+func (s *server) getCollectionSubcollections() []SubCollection {
+	statement := `select distinct sub_collection from CollectionTag where collection_id = ? order by sub_collection asc`
+	rows, err := s.db.Query(statement, s.currentUser.targetCollection.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in getCollectionSubcollections: %v", err)
+	}
+	defer rows.Close()
+	subCollections := make([]SubCollection, 0)
+	for rows.Next() {
+		var subCollection string
+		if err := rows.Scan(&subCollection); err != nil {
+			log.Fatalf("Failed to scan row: %v", err)
+		}
+		subCollections = append(subCollections, SubCollection{name: subCollection})
+	}
+	return subCollections
+}
+
+func (s *server) searchCollectionSubcollecitons(search string) []SubCollection {
+	fuzzySearch := "%" + search + "%"
+	statement := `SELECT DISTINCT sub_collection
+                  FROM CollectionTag
+                  WHERE collection_id = ? AND sub_collection LIKE ?
+                  ORDER BY sub_collection ASC`
+	rows, err := s.db.Query(statement, s.currentUser.targetCollection.id, fuzzySearch)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in searchCollectionSubcollections: %v", err)
+	}
+	defer rows.Close()
+	subCollections := make([]SubCollection, 0)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			log.Fatalf("Failed to scan row: %v", err)
+		}
+		subCollection := SubCollection{name: name}
+		subCollections = append(subCollections, subCollection)
+	}
+	log.Printf("subcollections from db : %v", subCollections)
+	return subCollections
 }
 
 // ////////////////////// AUDIO HANDLING ////////////////////////
