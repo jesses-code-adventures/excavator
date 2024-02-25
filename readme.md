@@ -17,9 +17,10 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 
 ## terminology
 - **the root:** this is the user-defined root sample library where their sample browsing experience will start when they open the app
-- **tag:** a symlink allowing easy access to a sample living elsewhere on your drive.
-- **collection:** a directory tree containing tags
-- **export:** taking a collection and copying all the files pointed to by the tags to a given directory.
+- **tag:** a path to a sample in the root.
+- **collection tag:** links a tag to a collection. name can be customized and a child directory ("subcollection") exists as part of the object to be used in exports.
+- **collection:** a group of collection tags with a name and a description - these will be fed to exports.
+- **export:** taking a collection and copying all the files pointed to by the tags to a given directory. can be done in symlink or copy mode (default symlink).
 
 ## features
 - [ ] first launch should prompt user to create a "root sample library".
