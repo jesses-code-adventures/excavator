@@ -386,17 +386,17 @@ func (m model) headerView() string {
 // Display key info to user
 func (m model) getStatusDisplay() string {
 	termWidth := m.viewport.Width
-    msg := fmt.Sprintf("Collection: %v, Subcollection: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection)
+	msg := fmt.Sprintf("Collection: %v, Subcollection: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection)
 	padding := (termWidth - len(msg)) / 2
 	if padding < 0 {
 		padding = 0
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding).
-        Foreground(lipgloss.AdaptiveColor{
-		Light: "#B2B2B2",
-		Dark:  "#4A4A4A",
-	    }).
-        Render(msg)
+		Foreground(lipgloss.AdaptiveColor{
+			Light: "#B2B2B2",
+			Dark:  "#4A4A4A",
+		}).
+		Render(msg)
 	return paddedHelpStyle
 }
 
