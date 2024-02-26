@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"math/rand"
 	"os"
@@ -74,6 +75,7 @@ type KeyMap struct {
 	CreateQuickTag         key.Binding
 	CreateTag              key.Binding
 	SetTargetSubCollection key.Binding
+	FuzzySearchFromRoot    key.Binding
 }
 
 // The actual help text
@@ -158,6 +160,10 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("/"),
 		key.WithHelp("/", "search window"),
 	),
+	FuzzySearchFromRoot: key.NewBinding(
+		key.WithKeys("F"),
+		key.WithHelp("F", "search sounds from root"),
+	),
 }
 
 // ////////////////////// UI ////////////////////////
@@ -176,6 +182,16 @@ var (
 			Background(green).
 			Padding(1, 1).
 			Height(3)
+	helpKeyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{
+			Light: "#909090",
+			Dark:  "#626262",
+		})
+	helpValueStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{
+			Light: "#B2B2B2",
+			Dark:  "#4A4A4A",
+		})
 	// Directory Walker
 	viewportStyle = lipgloss.NewStyle()
 	selectedStyle = lipgloss.NewStyle().
@@ -258,15 +274,20 @@ func getNewCollectionForm() form {
 }
 
 // Get the inputs for the new collection form
-func getSubcollectionInput() []formInput {
+func getSearchInput() []formInput {
 	return []formInput{
-		newFormInput("subcollection"),
+		newFormInput("search"),
 	}
 }
 
 // Get the new collection form
 func getTargetSubCollectionForm() form {
-	return newForm("set target subcollection", getSubcollectionInput())
+	return newForm("set target subcollection", getSearchInput())
+}
+
+// Get the new collection form
+func getFuzzySearchRootForm() form {
+	return newForm("fuzzy search from root", getSearchInput())
 }
 
 // Get the inputs for the new collection form
@@ -293,6 +314,7 @@ type selectableListItem interface {
 	Id() int
 	Name() string
 	Description() string
+	IsDir() bool
 }
 
 // A list where a single item can be selected
@@ -303,6 +325,7 @@ type selectableList struct {
 	listFocused bool
 }
 
+// A constructor for a selectable list
 type searchableSelectableList struct {
 	title          string
 	selectableList selectableList
@@ -313,9 +336,7 @@ func newSearchableList(title string, items []selectableListItem) searchableSelec
 	return searchableSelectableList{
 		title: title,
 		selectableList: selectableList{
-			title:    title,
-			items:    items,
-			selected: 0,
+			title: title,
 		},
 		search: formInput{
 			name:  "search",
@@ -325,14 +346,25 @@ func newSearchableList(title string, items []selectableListItem) searchableSelec
 }
 
 func (m model) filterListItems() model {
-	log.Printf("filtering list items - prev %v", m.searchableSelectableList.selectableList.items)
-	resp := m.server.searchCollectionSubcollecitons(m.searchableSelectableList.search.input.Value())
-	newArray := make([]selectableListItem, 0)
-	for _, item := range resp {
-		newArray = append(newArray, item)
+	var resp []selectableListItem
+	switch m.searchableSelectableList.title {
+	case "search for subcollection":
+		r := m.server.searchCollectionSubcollecitons(m.searchableSelectableList.search.input.Value())
+		newArray := make([]selectableListItem, 0)
+		for _, item := range r {
+			newArray = append(newArray, item)
+		}
+		resp = newArray
+	case "fuzzy search from root":
+		log.Println("performing fuzzy search")
+		r := m.server.fuzzySearch(m.searchableSelectableList.search.input.Value(), true)
+		newArray := make([]selectableListItem, 0)
+		for _, item := range r {
+			newArray = append(newArray, item)
+		}
+		resp = newArray
 	}
-	m.searchableSelectableList.selectableList.items = newArray
-	log.Printf("filtering list items - post %v", m.searchableSelectableList.selectableList.items)
+	m.searchableSelectableList.selectableList.items = resp
 	return m
 }
 
@@ -383,19 +415,47 @@ func (m model) headerView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
+type statusDisplayItem struct {
+	key        string
+	value      string
+	keyStyle   lipgloss.Style
+	valueStyle lipgloss.Style
+}
+
+func newStatusDisplayItem(key string, value string) statusDisplayItem {
+	return statusDisplayItem{
+		key:        key,
+		value:      value,
+		keyStyle:   helpKeyStyle,
+		valueStyle: helpValueStyle,
+	}
+}
+
+func (s statusDisplayItem) View() string {
+	return s.keyStyle.Render(s.key+": ") + s.valueStyle.Render(s.value)
+}
+
 // Display key info to user
 func (m model) getStatusDisplay() string {
 	termWidth := m.viewport.Width
-	msg := fmt.Sprintf("Collection: %v, Subcollection: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection)
-	padding := (termWidth - len(msg)) / 2
+	msg := ""
+	// hack to make centering work
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection)
+	items := []statusDisplayItem{
+		newStatusDisplayItem("collection", m.server.currentUser.targetCollection.Name()),
+		newStatusDisplayItem("subcollection", m.server.currentUser.targetSubCollection),
+	}
+	for i, item := range items {
+		msg += item.View()
+		if i != len(items)-1 {
+			msg = msg + helpValueStyle.Render(", ")
+		}
+	}
+	padding := (termWidth - len(msgRaw)) / 2
 	if padding < 0 {
 		padding = 0
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding).
-		Foreground(lipgloss.AdaptiveColor{
-			Light: "#B2B2B2",
-			Dark:  "#4A4A4A",
-		}).
 		Render(msg)
 	return paddedHelpStyle
 }
@@ -411,7 +471,7 @@ func (m model) footerView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
-	return centeredHelpText + "\n" + m.getStatusDisplay()
+	return m.getStatusDisplay() + "\n" + centeredHelpText
 }
 
 // Formview handler
@@ -452,7 +512,6 @@ func (m model) searchableListView() string {
 			s += unselectedStyle.Render(fmt.Sprintf("     %s", choice.Name()))
 		}
 	}
-	// Note: We no longer add the search input here
 	return searchableListItemsStyle.Render(s)
 }
 
@@ -463,15 +522,15 @@ func (m model) directoryView() string {
 		var newLine string
 		if m.cursor == i {
 			cursor := "-->"
-			newLine = fmt.Sprintf("%s %s", cursor, choice.path)
+			newLine = fmt.Sprintf("%s %s", cursor, choice.Name())
 		} else {
-			newLine = fmt.Sprintf("     %s", choice.path)
+			newLine = fmt.Sprintf("     %s", choice.Name())
 		}
 		if len(newLine) > m.viewport.Width {
 			newLine = newLine[:m.viewport.Width-2]
 		}
 		if m.cursor == i {
-			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.displayTags()))
+			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 		} else {
 			newLine = unselectedStyle.Render(newLine)
 		}
@@ -504,25 +563,6 @@ func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
 
 	return m
 }
-
-// func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
-// 	headerHeight := lipgloss.Height(m.headerView())
-// 	footerHeight := lipgloss.Height(m.footerView())
-// 	verticalMarginHeight := headerHeight + footerHeight
-// 	listItemStyleHeight := 2 // TODO: make this better
-// 	if !m.ready {
-// 		// Instantiate a viewport when the program starts
-// 		m.viewportWidth = msg.Width
-// 		m.viewportHeight = (msg.Height - verticalMarginHeight) / listItemStyleHeight
-// 		m.viewport = viewport.New(msg.Width, (msg.Height - verticalMarginHeight))
-// 		m.viewport.SetContent(m.directoryView())
-// 		m.ready = true
-// 	} else {
-// 		m.viewport.Width = msg.Width
-// 		m.viewport.Height = msg.Height - verticalMarginHeight
-// 	}
-// 	return m
-// }
 
 // Handle viewport positioning
 func (m model) ensureCursorVerticallyCentered() viewport.Model {
@@ -582,10 +622,8 @@ func (m model) View() string {
 	case DirectoryWalker, FormWindow, ListSelectionWindow:
 		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView())
 	case SearchableSelectableList:
-		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.searchableListView()), m.footerView())
-		// Append search input directly above the footer
-		// searchInput := m.searchableSelectableList.search.input.View()
-		// contentView += fmt.Sprintf("\n%s\n%s", searchInputBoxStyle.Render(searchInput), m.footerView())
+		searchInput := m.searchableSelectableList.search.input.View()
+		contentView = fmt.Sprintf("%s\n%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.searchableListView()), searchInput, m.footerView())
 	default:
 		contentView = "Invalid window type"
 	}
@@ -618,7 +656,17 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		for _, subCollection := range subCollections {
 			items = append(items, subCollection)
 		}
+		m.server.choices = items
 		m.searchableSelectableList = newSearchableList("search for subcollection", items)
+		m.form = getTargetSubCollectionForm()
+		m.windowType = FormWindow
+	case key.Matches(msg, m.keys.FuzzySearchFromRoot):
+		items := make([]selectableListItem, 0)
+		files := m.server.fuzzySearch("", true)
+		for _, subCollection := range files {
+			items = append(items, subCollection)
+		}
+		m.searchableSelectableList = newSearchableList("fuzzy search from root", items)
 		m.form = getTargetSubCollectionForm()
 		m.windowType = FormWindow
 	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SelectCollection):
@@ -673,7 +721,7 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 		m.form.inputs[m.form.focusedInput].input.Blur()
 		m.form.writing = true
 		m.form.inputs[m.form.focusedInput].input.Focus()
-	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection), key.Matches(msg, m.keys.SetTargetSubCollection):
+	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection), key.Matches(msg, m.keys.SetTargetSubCollection), key.Matches(msg, m.keys.FuzzySearchFromRoot):
 		m.windowType = DirectoryWalker
 		m.form.inputs = make([]formInput, 0)
 		m.server.updateChoices()
@@ -704,7 +752,7 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 			m.form.inputs = make([]formInput, 0)
 			m.windowType = DirectoryWalker
 		case "create tag":
-			m.server.createTag(m.server.choices[m.cursor].path, m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+			m.server.createTag(m.server.choices[m.cursor].Name(), m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
 			m.form.inputs = make([]formInput, 0)
 			m.windowType = DirectoryWalker
 		}
@@ -743,9 +791,12 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 			newInput, cmd = m.searchableSelectableList.search.input.Update(msg)
 			m.searchableSelectableList.search.input = newInput
 			m.searchableSelectableList.search.input.Focus()
-			m = m.filterListItems()
-			m.cursor = 0
-			m.searchableSelectableList.selectableList.selected = 0
+			searchValue := m.searchableSelectableList.search.input.Value()
+			if m.selectableList.title == "search for subcollection" || len(searchValue) > 5 {
+				m = m.filterListItems()
+				m.cursor = 0
+				m.searchableSelectableList.selectableList.selected = 0
+			}
 		} else {
 			newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
 			m.form.inputs[m.form.focusedInput].input = newInput
@@ -758,6 +809,8 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 // List selection navigation
 func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
+		m = m.handleStandardMovementKey(msg)
 	case key.Matches(msg, m.keys.Up):
 		m.searchableSelectableList.selectableList.selected--
 		if m.searchableSelectableList.selectableList.selected < 0 {
@@ -789,6 +842,17 @@ func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, t
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.Enter):
 		switch m.searchableSelectableList.title {
+		case "fuzzy search from root":
+			if len(m.searchableSelectableList.selectableList.items) == 0 {
+				value := m.searchableSelectableList.search.input.Value()
+				if value == "" {
+					return m, cmd
+				}
+				m.server.fuzzySearch(value, true)
+				m.searchableSelectableList = searchableSelectableList{}
+				m.windowType = DirectoryWalker
+				return m, cmd
+			}
 		case "search for subcollection":
 			if len(m.searchableSelectableList.selectableList.items) == 0 {
 				value := m.searchableSelectableList.search.input.Value()
@@ -830,8 +894,8 @@ func (m model) handleSearchableListKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 // Audition the file under the cursor
 func (m model) auditionCurrentlySelectedFile() {
 	choice := m.server.choices[m.cursor]
-	if !choice.isDir {
-		go m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.path))
+	if !choice.IsDir() {
+		go m.server.audioPlayer.PlayAudioFile(filepath.Join(m.server.currentDir, choice.Name()))
 	}
 }
 
@@ -842,12 +906,8 @@ func (m model) dirVerticalNavEffect() {
 	}
 }
 
-// Handle a single key press
-func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
+func (m model) handleStandardMovementKey(msg tea.KeyMsg) model {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
-		return m
 	case key.Matches(msg, m.keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
@@ -887,6 +947,29 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		m.viewport.GotoBottom()
 		m.cursor = len(m.server.choices) - 1
 		m.dirVerticalNavEffect()
+	}
+	return m
+}
+
+// Handle a single key press
+func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		m.quitting = true
+		return m
+	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
+		m = m.handleStandardMovementKey(msg)
+	case key.Matches(msg, m.keys.Enter):
+		choice := m.server.choices[m.cursor]
+		if choice.IsDir() {
+			if choice.Name() == ".." {
+				m.cursor = 0
+				m.server.changeToParentDir()
+			} else {
+				m.cursor = 0
+				m.server.changeDir(choice.Name())
+			}
+		}
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m.windowType = FormWindow
@@ -900,6 +983,13 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		m.form = getTargetSubCollectionForm()
 		m.cursor = 0
 		m.windowType = SearchableSelectableList
+	case key.Matches(msg, m.keys.FuzzySearchFromRoot):
+		items := make([]selectableListItem, 0)
+		log.Printf("fuzzy search from root")
+		m.searchableSelectableList = newSearchableList("fuzzy search from root", items)
+		m.form = getFuzzySearchRootForm()
+		m.cursor = 0
+		m.windowType = SearchableSelectableList
 	case key.Matches(msg, m.keys.SelectCollection):
 		collections := m.server.getCollections()
 		m.selectableList = selectableList{title: "select collection", items: make([]selectableListItem, 0), selected: 0}
@@ -911,26 +1001,13 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg) model {
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.CreateQuickTag):
 		choice := m.server.choices[m.cursor]
-		if !choice.isDir {
-			m.server.createQuickTag(choice.path)
+		if !choice.IsDir() {
+			m.server.createQuickTag(choice.Name())
 		}
 		m.server.updateChoices()
 	case key.Matches(msg, m.keys.CreateTag):
-		m.form = getCreateTagForm(path.Base(m.server.choices[m.cursor].path), m.server.currentUser.targetSubCollection)
+		m.form = getCreateTagForm(path.Base(m.server.choices[m.cursor].Name()), m.server.currentUser.targetSubCollection)
 		m.windowType = FormWindow
-	case key.Matches(msg, m.keys.Enter):
-		choice := m.server.choices[m.cursor]
-		if choice.isDir {
-			if choice.path == ".." {
-				m.cursor = 0
-				m.server.changeToParentDir()
-				m.dirVerticalNavEffect()
-			} else {
-				m.cursor = 0
-				m.server.changeDir(choice.path)
-				m.dirVerticalNavEffect()
-			}
-		}
 	default:
 		switch msg.String() {
 		case "g":
@@ -982,6 +1059,22 @@ type dirEntryWithTags struct {
 	path  string
 	tags  []collectionTag
 	isDir bool
+}
+
+func (d dirEntryWithTags) Id() int {
+	return 0
+}
+
+func (d dirEntryWithTags) Name() string {
+	return d.path
+}
+
+func (d dirEntryWithTags) Description() string {
+	return d.displayTags()
+}
+
+func (d dirEntryWithTags) IsDir() bool {
+	return d.isDir
 }
 
 // A string representing the collection tags associated with a directory entry
@@ -1062,7 +1155,7 @@ type server struct {
 	root        string
 	currentDir  string
 	currentUser user
-	choices     []dirEntryWithTags
+	choices     []selectableListItem
 	audioPlayer *AudioPlayer
 }
 
@@ -1114,7 +1207,7 @@ func (s *server) getRandomAudioFileIndex() int {
 	}
 	possibleIndexes := make([]int, 0)
 	for i, choice := range s.choices {
-		if !choice.isDir {
+		if !choice.IsDir() {
 			possibleIndexes = append(possibleIndexes, i)
 		}
 	}
@@ -1124,7 +1217,7 @@ func (s *server) getRandomAudioFileIndex() int {
 // Populate the choices array with the current directory's contents
 func (s *server) updateChoices() {
 	if s.currentDir != s.root {
-		s.choices = make([]dirEntryWithTags, 0)
+		s.choices = make([]selectableListItem, 0)
 		dirEntries := s.listDirEntries()
 		s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
 		s.choices = append(s.choices, dirEntries...)
@@ -1215,14 +1308,14 @@ func (s *server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (s *server) listDirEntries() []dirEntryWithTags {
+func (s *server) listDirEntries() []selectableListItem {
 	files, err := os.ReadDir(s.currentDir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
 	files = s.filterDirEntries(files)
 	collectionTags := s.getCollectionTags(s.currentDir)
-	var samples []dirEntryWithTags
+	var samples []selectableListItem
 	for _, file := range files {
 		matchedTags := make([]collectionTag, 0)
 		isDir := file.IsDir()
@@ -1238,12 +1331,67 @@ func (s *server) listDirEntries() []dirEntryWithTags {
 	return samples
 }
 
+func (s *server) getAllDirectories(path string) []string {
+	paths, err := os.ReadDir(path)
+	if err != nil {
+		log.Fatalf("Failed to read samples directory: %v", err)
+	}
+	var dirs []string
+	for _, path := range paths {
+		if path.IsDir() {
+			dirs = append(dirs, path.Name())
+		}
+	}
+	return dirs
+}
+
+// Standard function for getting the necessary files from a dir with their associated tags
+func (s *server) fuzzySearch(search string, fromRoot bool) []dirEntryWithTags {
+	log.Println("in server fuzzy search fn")
+	var dir string
+	if fromRoot {
+		dir = s.root
+	} else {
+		dir = s.currentDir
+	}
+	var entries []os.DirEntry = make([]os.DirEntry, 0)
+	collectionTags := s.searchCollectionTags(search)
+	log.Println("collection tags", collectionTags)
+	var files []fs.DirEntry
+	var samples []dirEntryWithTags
+	log.Println("searching for: ", search)
+	log.Println("dir: ", dir)
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(path, search) || strings.HasPrefix(path, ".") {
+			return nil
+		}
+		if (strings.HasSuffix(path, ".wav") || strings.HasSuffix(path, ".mp3") || strings.HasSuffix(path, ".flac")) && !d.IsDir() {
+			entries = append(entries, d)
+		}
+		files = append(files, d)
+		matchedTags := make([]collectionTag, 0)
+		for _, tag := range collectionTags {
+			if strings.Contains(tag.filePath, path) {
+				matchedTags = append(matchedTags, tag)
+			}
+		}
+		samples = append(samples, dirEntryWithTags{path: path, tags: matchedTags, isDir: false})
+		return nil
+	})
+	if err != nil {
+		log.Fatalf("Failed to read samples directory: %v", err)
+	}
+	log.Println("files: ", len(files))
+	return samples
+}
+
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
 
 // Get collection tags associated with a directory
 func (s *server) getCollectionTags(dir string) []collectionTag {
-	log.Println("get collection tags")
-	log.Println("dir: ", dir)
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -1252,6 +1400,33 @@ left join Tag t on ct.tag_id = t.id
 where t.file_path like ?`
 	dir = dir + "%"
 	rows, err := s.db.Query(statement, dir)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+	defer rows.Close()
+	tags := make([]collectionTag, 0)
+	log.Println("collection tags")
+	for rows.Next() {
+		var filePath, collectionName, subCollection string
+		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
+			log.Fatalf("Failed to scan row: %v", err)
+		}
+		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
+		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
+	}
+	return tags
+}
+
+// Get collection tags associated with a directory
+func (s *server) searchCollectionTags(search string) []collectionTag {
+	statement := `select t.file_path, col.name, ct.sub_collection
+from CollectionTag ct
+left join Collection col
+on ct.collection_id = col.id
+left join Tag t on ct.tag_id = t.id
+where t.file_path like ?`
+	search = "%" + search + "%"
+	rows, err := s.db.Query(statement, search)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
@@ -1374,6 +1549,11 @@ func (c collection) Description() string {
 	return c.description
 }
 
+// Requirement for a listSelectionItem
+func (c collection) IsDir() bool {
+	return false
+}
+
 // Get all collections for the current user
 func (s *server) getCollections() []collection {
 	statement := `select id, name, description from Collection where user_id = ?`
@@ -1470,6 +1650,10 @@ func (s SubCollection) Name() string {
 
 func (s SubCollection) Description() string {
 	return ""
+}
+
+func (s SubCollection) IsDir() bool {
+	return false
 }
 
 func (s *server) getCollectionSubcollections() []SubCollection {
@@ -1649,7 +1833,6 @@ func (a *AudioPlayer) Run() {
 			a.handlePlayCommnad(path)
 		}
 	}
-
 }
 
 // Play one audio file. If another file is already playing, close the current streamer and play the new file.
