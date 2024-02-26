@@ -166,7 +166,7 @@ var DefaultKeyMap = KeyMap{
 	),
 }
 
-// ////////////////////// UI ////////////////////////
+// ////////////////////// STYLING ////////////////////////
 
 // All styles to be used throughout the ui
 var (
@@ -342,23 +342,21 @@ func newSearchableList(title string) searchableSelectableList {
 func (m model) filterListItems() model {
 	var resp []selectableListItem
 	switch m.searchableSelectableList.title {
-	case "search for subcollection":
-		r := m.server.searchCollectionSubcollecitons(m.searchableSelectableList.search.input.Value())
+	case "set target subcollection":
+		r := m.server.searchCollectionSubcollections(m.searchableSelectableList.search.input.Value())
 		newArray := make([]selectableListItem, 0)
 		for _, item := range r {
 			newArray = append(newArray, item)
 		}
 		resp = newArray
+		m.server.navState.choices = resp
 	case "fuzzy search from root":
 		log.Println("performing fuzzy search")
-		r := m.server.fuzzySearch(m.searchableSelectableList.search.input.Value(), true)
-		newArray := make([]selectableListItem, 0)
-		for _, item := range r {
-			newArray = append(newArray, item)
-		}
-		resp = newArray
+		m.server.fuzzyFind(m.searchableSelectableList.search.input.Value(), true)
+	case "fuzzy search window":
+		log.Println("performing fuzzy search")
+		m.server.fuzzyFind(m.searchableSelectableList.search.input.Value(), false)
 	}
-	m.server.choices = resp
 	return m
 }
 
@@ -439,12 +437,12 @@ func (m model) getStatusDisplay() string {
 	termWidth := m.viewport.Width
 	msg := ""
 	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection, m.windowType.String(), len(m.server.choices))
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection, m.windowType.String(), len(m.server.navState.choices))
 	items := []statusDisplayItem{
 		newStatusDisplayItem("collection", m.server.currentUser.targetCollection.Name()),
 		newStatusDisplayItem("subcollection", m.server.currentUser.targetSubCollection),
 		newStatusDisplayItem("window", fmt.Sprintf("%v", m.windowType.String())),
-		newStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.server.choices))),
+		newStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.server.navState.choices))),
 	}
 	for i, item := range items {
 		msg += item.View()
@@ -472,6 +470,12 @@ func (m model) footerView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
+	var searchInput string
+	if m.windowType == SearchableSelectableList {
+		searchInput = searchInputBoxStyle.Render(m.searchableSelectableList.search.input.View())
+		return searchInput + "\n" + m.getStatusDisplay() + "\n" + centeredHelpText
+
+	}
 	return m.getStatusDisplay() + "\n" + centeredHelpText
 }
 
@@ -492,7 +496,7 @@ func (m model) formView() string {
 // Standard content handler
 func (m model) directoryView() string {
 	s := ""
-	for i, choice := range m.server.choices {
+	for i, choice := range m.server.navState.choices {
 		var newLine string
 		if m.cursor == i {
 			cursor := "--> "
@@ -593,11 +597,10 @@ func (m model) View() string {
 	// Main content view
 	var contentView string
 	switch m.windowType {
-	case DirectoryWalker, FormWindow, ListSelectionWindow:
+	case DirectoryWalker, FormWindow, ListSelectionWindow, SearchableSelectableList:
 		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView())
-	case SearchableSelectableList:
-		searchInput := m.searchableSelectableList.search.input.View()
-		contentView = fmt.Sprintf("%s\n%s\n%s\n%s", m.headerView(), viewportStyle.Render(searchableSelectableListStyle.Render(m.directoryView())), searchInput, m.footerView())
+	// case SearchableSelectableList:
+	// 	contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), searchableSelectableListStyle.Render(m.directoryView()),  m.footerView())
 	default:
 		contentView = "Invalid window type"
 	}
@@ -609,7 +612,7 @@ func (m model) View() string {
 
 func (m model) clearModel() model {
 	m.form = form{}
-	m.server.choices = make([]selectableListItem, 0)
+	m.server.navState.choices = make([]selectableListItem, 0)
 	m.searchableSelectableList = searchableSelectableList{}
 	m.cursor = 0
 	return m
@@ -629,24 +632,24 @@ func (m model) handleTitledList(msg tea.Msg, cmd tea.Cmd, title string) (model, 
 	case "set target subcollection":
 		subCollections := m.server.getCollectionSubcollections()
 		for _, subCollection := range subCollections {
-			m.server.choices = append(m.server.choices, subCollection)
+			m.server.navState.choices = append(m.server.navState.choices, subCollection)
 		}
 	case "select collection":
 		collections := m.server.getCollections()
 		m.selectableList = title
 		for _, collection := range collections {
-			m.server.choices = append(m.server.choices, collection)
+			m.server.navState.choices = append(m.server.navState.choices, collection)
 		}
 	case "search for collection":
 		collections := m.server.getCollections()
 		m.selectableList = title
 		for _, collection := range collections {
-			m.server.choices = append(m.server.choices, collection)
+			m.server.navState.choices = append(m.server.navState.choices, collection)
 		}
 	case "fuzzy search from root":
-		files := m.server.fuzzySearch("", true)
+		files := m.server.fuzzyFind("", true)
 		for _, subCollection := range files {
-			m.server.choices = append(m.server.choices, subCollection)
+			m.server.navState.choices = append(m.server.navState.choices, subCollection)
 		}
 	default:
 		log.Fatalf("Invalid searchable selectable list title")
@@ -661,7 +664,7 @@ func (m model) handleForm(msg tea.Msg, cmd tea.Cmd, title string) (model, tea.Cm
 		m = m.clearModel()
 		m.form = getNewCollectionForm()
 	case "create tag":
-		m.form = getCreateTagForm(path.Base(m.server.choices[m.cursor].Name()), m.server.currentUser.targetSubCollection)
+		m.form = getCreateTagForm(path.Base(m.server.navState.choices[m.cursor].Name()), m.server.currentUser.targetSubCollection)
 	}
 	return m, cmd
 }
@@ -704,15 +707,14 @@ func (m model) setWindowType(msg tea.Msg, cmd tea.Cmd, windowType windowType, ti
 
 // Audition the file under the cursor
 func (m model) auditionCurrentlySelectedFile() {
-	if len(m.server.choices) == 0 {
+	if len(m.server.navState.choices) == 0 {
 		return
 	}
-	choice := m.server.choices[m.cursor]
+	choice := m.server.navState.choices[m.cursor]
 	if !choice.IsDir() && choice.IsFile() {
 		var path string
-		if !strings.Contains(choice.Name(), m.server.currentDir) {
-			fmt.Println("concatenating paths")
-			path = filepath.Join(m.server.currentDir, choice.Name())
+		if !strings.Contains(choice.Name(), m.server.navState.currentDir) {
+			path = filepath.Join(m.server.navState.currentDir, choice.Name())
 		} else {
 			path = choice.Name()
 		}
@@ -736,15 +738,15 @@ func (m model) handleStandardMovementKey(msg tea.KeyMsg) model {
 		}
 		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.Down):
-		if m.cursor < len(m.server.choices)-1 {
+		if m.cursor < len(m.server.navState.choices)-1 {
 			m.cursor++
 		}
 		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.JumpDown):
-		if m.cursor < len(m.server.choices)-8 {
+		if m.cursor < len(m.server.navState.choices)-8 {
 			m.cursor += 8
 		} else {
-			m.cursor = len(m.server.choices) - 1
+			m.cursor = len(m.server.navState.choices) - 1
 		}
 		m.dirVerticalNavEffect()
 	case key.Matches(msg, m.keys.JumpUp):
@@ -757,7 +759,7 @@ func (m model) handleStandardMovementKey(msg tea.KeyMsg) model {
 	case key.Matches(msg, m.keys.Audition):
 		m.auditionCurrentlySelectedFile()
 	case key.Matches(msg, m.keys.AuditionRandom):
-		fileIndex := m.server.getRandomAudioFileIndex()
+		fileIndex := m.server.navState.getRandomAudioFileIndex()
 		if fileIndex != -1 {
 			m.cursor = fileIndex
 			m.dirVerticalNavEffect()
@@ -767,7 +769,7 @@ func (m model) handleStandardMovementKey(msg tea.KeyMsg) model {
 		}
 	case key.Matches(msg, m.keys.JumpBottom):
 		m.viewport.GotoBottom()
-		m.cursor = len(m.server.choices) - 1
+		m.cursor = len(m.server.navState.choices) - 1
 		m.dirVerticalNavEffect()
 	}
 	return m
@@ -782,14 +784,14 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) 
 	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
 		m = m.handleStandardMovementKey(msg)
 	case key.Matches(msg, m.keys.Enter):
-		choice := m.server.choices[m.cursor]
+		choice := m.server.navState.choices[m.cursor]
 		if choice.IsDir() {
 			if choice.Name() == ".." {
 				m.cursor = 0
-				m.server.changeToParentDir()
+				m.server.navState.changeToParentDir()
 			} else {
 				m.cursor = 0
-				m.server.changeDir(choice.Name())
+				m.server.navState.changeDir(choice.Name())
 			}
 		}
 	case key.Matches(msg, m.keys.NewCollection):
@@ -804,7 +806,7 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) 
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
 		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
 	case key.Matches(msg, m.keys.CreateQuickTag):
-		choice := m.server.choices[m.cursor]
+		choice := m.server.navState.choices[m.cursor]
 		if !choice.IsDir() {
 			m.server.createQuickTag(choice.Name())
 		}
@@ -835,7 +837,7 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 	case key.Matches(msg, m.keys.SetTargetCollection):
 		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for collection")
 	case key.Matches(msg, m.keys.SetTargetSubCollection):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for subcollection")
+		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "set target subcollection")
 	case key.Matches(msg, m.keys.FuzzySearchFromRoot):
 		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "fuzzy search from root")
 	case key.Matches(msg, m.keys.ToggleAutoAudition):
@@ -843,7 +845,7 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 	case key.Matches(msg, m.keys.Enter):
 		switch m.selectableList {
 		case "search for collection":
-			if collection, ok := m.server.choices[m.cursor].(collection); ok {
+			if collection, ok := m.server.navState.choices[m.cursor].(collection); ok {
 				m.server.updateTargetCollection(collection)
 				m, cmd = m.goToMainWindow(msg, cmd)
 			} else {
@@ -903,12 +905,11 @@ func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.
 		switch m.form.title {
 		case "create collection":
 			m.server.createCollection(m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+		case "create tag":
+			m.server.createTag(m.server.navState.choices[m.cursor].Name(), m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
 		}
 		// case "set target subcollection":
 		// 	m.server.updateTargetSubCollection(m.form.inputs[0].input.Value())
-		// case "create tag":
-		// 	m.server.createTag(m.server.choices[m.cursor].Name(), m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
-		// }
 		m, cmd = m.goToMainWindow(msg, cmd)
 	}
 	return m, cmd
@@ -922,7 +923,7 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 		if m.windowType == SearchableSelectableList {
 			m.searchableSelectableList.search.input.Blur()
 			m = m.filterListItems()
-			log.Printf("filtered items in form writing key quit %v", m.server.choices)
+			log.Printf("filtered items in form writing key quit %v", m.server.navState.choices)
 			m.cursor = 0
 		} else {
 			m.form.inputs[m.form.focusedInput].input.Blur()
@@ -932,7 +933,7 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 		if m.windowType == SearchableSelectableList {
 			m.searchableSelectableList.search.input.Blur()
 			m = m.filterListItems()
-			log.Printf("filtered items in form writing key enter %v", m.server.choices)
+			log.Printf("filtered items in form writing key enter %v", m.server.navState.choices)
 			m.cursor = 0
 		} else {
 			m.form.inputs[m.form.focusedInput].input.Blur()
@@ -943,7 +944,7 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 			newInput, cmd = m.searchableSelectableList.search.input.Update(msg)
 			m.searchableSelectableList.search.input = newInput
 			m.searchableSelectableList.search.input.Focus()
-			if m.selectableList == "search for subcollection" {
+			if m.selectableList == "set target subcollection" {
 				m = m.filterListItems()
 				m.cursor = 0
 			}
@@ -959,6 +960,8 @@ func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd
 // List selection navigation
 func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, m.keys.Quit):
+		return m.goToMainWindow(msg, cmd)
 	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
 		m = m.handleStandardMovementKey(msg)
 	case key.Matches(msg, m.keys.NewCollection):
@@ -967,7 +970,7 @@ func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, t
 	case key.Matches(msg, m.keys.SetTargetSubCollection):
 		m.form = getTargetSubCollectionForm()
 		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
-	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.SetTargetCollection):
+	case key.Matches(msg, m.keys.SetTargetCollection):
 		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for collection")
 	case key.Matches(msg, m.keys.InsertMode) || key.Matches(msg, m.keys.SearchBuf):
 		m.searchableSelectableList.search.input.Focus()
@@ -981,20 +984,21 @@ func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, t
 			if value == "" {
 				return m, cmd
 			}
-			m.server.fuzzySearch(value, true)
+			m.cursor = 0
+			m.server.fuzzyFind(value, true)
 			return m, cmd
 		case "fuzzy search window":
 			if value == "" {
 				return m, cmd
 			}
-			m.server.fuzzySearch(value, false)
+			m.cursor = 0
+			m.server.fuzzyFind(value, false)
 			return m, cmd
-		case "search for subcollection":
 		case "set target subcollection":
-			if len(m.server.choices) == 0 && len(value) > 0 {
+			if len(m.server.navState.choices) == 0 && len(value) > 0 {
 				m.server.updateTargetSubCollection(value)
 			} else {
-				selected := m.server.choices[m.cursor]
+				selected := m.server.navState.choices[m.cursor]
 				log.Printf("selected: %v", selected)
 				if collection, ok := selected.(selectableListItem); ok {
 					log.Printf("selected collection: %v", collection.Name())
@@ -1114,11 +1118,20 @@ type config struct {
 
 // Constructor for the Config struct
 func newConfig(data string, samples string, dbFileName string) *config {
+	log.Printf("data: %v, samples: %v", data, samples)
 	data = utils.ExpandHomeDir(data)
 	samples = utils.ExpandHomeDir(samples)
+	log.Printf("expanded data: %v, samples: %v", data, samples)
 	sqlCommands, err := os.ReadFile("src/sql_commands/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
+	}
+	samplesExists := true
+	if _, err := os.Stat(samples); os.IsNotExist(err) {
+		samplesExists = false
+	}
+	if !samplesExists {
+		log.Fatalf("No samples directory found at %v", samples)
 	}
 	config := config{
 		data:              data,
@@ -1152,13 +1165,155 @@ func (c *config) getDbPath() string {
 	return filepath.Join(c.data, c.dbFileName)
 }
 
+type navState struct {
+	root           string
+	currentDir     string
+	choiceChannel  chan selectableListItem
+	choices        []selectableListItem
+	collectionTags func(path string) []collectionTag
+}
+
+func newNavState(root string, currentDir string, collectionTags func(path string) []collectionTag) *navState {
+	choiceChannel := make(chan selectableListItem)
+	navState := navState{
+		root:           root,
+		currentDir:     currentDir,
+		choiceChannel:  choiceChannel,
+		choices:        make([]selectableListItem, 0),
+		collectionTags: collectionTags,
+	}
+	go navState.Run()
+	return &navState
+}
+
+func (n *navState) Run() {
+	for {
+		select {
+		case choice := <-n.choiceChannel:
+			n.choices = append(n.choices, choice)
+		}
+	}
+}
+
+func (n *navState) pushChoice(choice selectableListItem) {
+	n.choiceChannel <- choice
+}
+
+// Grab an index of some audio file within the current directory
+func (n *navState) getRandomAudioFileIndex() int {
+	if len(n.choices) == 0 {
+		return -1
+	}
+	possibleIndexes := make([]int, 0)
+	for i, choice := range n.choices {
+		if !choice.IsDir() {
+			possibleIndexes = append(possibleIndexes, i)
+		}
+	}
+	return possibleIndexes[rand.Intn(len(possibleIndexes))]
+}
+
+// Populate the choices array with the current directory's contents
+func (n *navState) updateChoices() {
+	if n.currentDir != n.root {
+		n.choices = make([]selectableListItem, 0)
+		dirEntries := n.listDirEntries()
+		n.choices = append(n.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
+		n.choices = append(n.choices, dirEntries...)
+	} else {
+		n.choices = n.listDirEntries()
+	}
+}
+
+// Return only directories and valid audio files
+func (f *navState) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
+	dirs := make([]os.DirEntry, 0)
+	files := make([]os.DirEntry, 0)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if entry.IsDir() {
+			dirs = append(dirs, entry)
+			continue
+		}
+		if strings.HasSuffix(entry.Name(), ".wav") || strings.HasSuffix(entry.Name(), ".mp3") ||
+			strings.HasSuffix(entry.Name(), ".flac") {
+			files = append(files, entry)
+		}
+	}
+	return append(dirs, files...)
+}
+
+// Standard function for getting the necessary files from a dir with their associated tags
+func (f *navState) listDirEntries() []selectableListItem {
+	files, err := os.ReadDir(f.currentDir)
+	log.Printf("current dir: %v", f.currentDir)
+	if err != nil {
+		log.Fatalf("Failed to read samples directory: %v", err)
+	}
+	files = f.filterDirEntries(files)
+	var samples []selectableListItem
+	for _, file := range files {
+		matchedTags := make([]collectionTag, 0)
+		isDir := file.IsDir()
+		if !isDir {
+			for _, tag := range f.collectionTags(f.currentDir) {
+				if strings.Contains(tag.filePath, file.Name()) {
+					matchedTags = append(matchedTags, tag)
+				}
+			}
+		}
+		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
+	}
+	return samples
+}
+
+// Get the full path of the current directory
+func (n *navState) getCurrentDirPath() string {
+	return filepath.Join(n.root, n.currentDir)
+}
+
+// Change the current directory
+func (n *navState) changeDir(dir string) {
+	log.Println("Changing to dir: ", dir)
+	n.currentDir = filepath.Join(n.currentDir, dir)
+	log.Println("Current dir: ", n.currentDir)
+	n.updateChoices()
+}
+
+// Change the current directory to the root
+func (n *navState) changeToRoot() {
+	n.currentDir = n.root
+	n.updateChoices()
+}
+
+// Change the current directory to the parent directory
+func (n *navState) changeToParentDir() {
+	log.Println("Changing to dir: ", filepath.Dir(n.currentDir))
+	n.currentDir = filepath.Dir(n.currentDir)
+	n.updateChoices()
+}
+
+func (s *server) getAllDirectories(path string) []string {
+	paths, err := os.ReadDir(path)
+	if err != nil {
+		log.Fatalf("Failed to read samples directory: %v", err)
+	}
+	var dirs []string
+	for _, path := range paths {
+		if path.IsDir() {
+			dirs = append(dirs, path.Name())
+		}
+	}
+	return dirs
+}
+
 // The main struct holding the server
 type server struct {
 	db          *sql.DB
-	root        string
-	currentDir  string
 	currentUser user
-	choices     []selectableListItem
+	navState    *navState
 	audioPlayer *AudioPlayer
 }
 
@@ -1171,68 +1326,40 @@ func newServer(audioPlayer *AudioPlayer) *server {
 	config := newConfig(*data, *samples, *dbFileName)
 	config.handleDirectories()
 	dbPath := config.getDbPath()
-	dbExists := true
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		dbExists = false
-	}
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to create sqlite file %v", err)
 	}
-	if !dbExists {
-		_, err = db.Exec(string(config.createSqlCommands))
-	}
-	if err != nil {
-		log.Fatalf("Failed to execute SQL commands: %v", err)
-	} else {
-		log.Print("Database setup successfully.")
+	if _, err := os.Stat(config.getDbPath()); os.IsNotExist(err) {
+		_, innerErr := db.Exec(string(config.createSqlCommands))
+		if innerErr != nil {
+			log.Fatalf("Failed to execute SQL commands: %v", innerErr)
+		}
 	}
 	s := server{
 		db:          db,
-		root:        config.root,
-		currentDir:  config.root,
 		audioPlayer: audioPlayer,
 	}
+	navState := newNavState(config.root, config.root, s.getCollectionTags)
+	s.navState = navState
 	users := s.getUsers()
 	if len(users) == 0 {
 		log.Fatal("No users found")
 	}
 	s.currentUser = users[0]
 	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
-	s.updateChoices()
+	s.navState.updateChoices()
 	return &s
-}
-
-// Grab an index of some audio file within the current directory
-func (s *server) getRandomAudioFileIndex() int {
-	if len(s.choices) == 0 {
-		return -1
-	}
-	possibleIndexes := make([]int, 0)
-	for i, choice := range s.choices {
-		if !choice.IsDir() {
-			possibleIndexes = append(possibleIndexes, i)
-		}
-	}
-	return possibleIndexes[rand.Intn(len(possibleIndexes))]
-}
-
-// Populate the choices array with the current directory's contents
-func (s *server) updateChoices() {
-	if s.currentDir != s.root {
-		s.choices = make([]selectableListItem, 0)
-		dirEntries := s.listDirEntries()
-		s.choices = append(s.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
-		s.choices = append(s.choices, dirEntries...)
-	} else {
-		s.choices = s.listDirEntries()
-	}
 }
 
 // Set the current user's auto audition preference and update in db
 func (s *server) updateAutoAudition(autoAudition bool) {
 	s.currentUser.autoAudition = autoAudition
 	s.updateAutoAuditionInDb(autoAudition)
+}
+
+func (s *server) updateChoices() {
+	s.navState.updateChoices()
 }
 
 // Set the current user's target collection and update in db
@@ -1264,92 +1391,10 @@ func (s *server) createTag(filepath string, name string, subCollection string) {
 	s.updateChoices()
 }
 
-// Get the full path of the current directory
-func (s *server) getCurrentDirPath() string {
-	return filepath.Join(s.root, s.currentDir)
-}
-
-// Change the current directory
-func (s *server) changeDir(dir string) {
-	log.Println("Changing to dir: ", dir)
-	s.currentDir = filepath.Join(s.currentDir, dir)
-	log.Println("Current dir: ", s.currentDir)
-	s.updateChoices()
-}
-
-// Change the current directory to the root
-func (s *server) changeToRoot() {
-	s.currentDir = s.root
-	s.updateChoices()
-}
-
-// Change the current directory to the parent directory
-func (s *server) changeToParentDir() {
-	log.Println("Changing to dir: ", filepath.Dir(s.currentDir))
-	s.currentDir = filepath.Dir(s.currentDir)
-	s.updateChoices()
-}
-
-// Return only directories and valid audio files
-func (s *server) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
-	dirs := make([]os.DirEntry, 0)
-	files := make([]os.DirEntry, 0)
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		if entry.IsDir() {
-			dirs = append(dirs, entry)
-			continue
-		}
-		if strings.HasSuffix(entry.Name(), ".wav") || strings.HasSuffix(entry.Name(), ".mp3") ||
-			strings.HasSuffix(entry.Name(), ".flac") {
-			files = append(files, entry)
-		}
-	}
-	return append(dirs, files...)
-}
-
-// Standard function for getting the necessary files from a dir with their associated tags
-func (s *server) listDirEntries() []selectableListItem {
-	files, err := os.ReadDir(s.currentDir)
-	if err != nil {
-		log.Fatalf("Failed to read samples directory: %v", err)
-	}
-	files = s.filterDirEntries(files)
-	collectionTags := s.getCollectionTags(s.currentDir)
-	var samples []selectableListItem
-	for _, file := range files {
-		matchedTags := make([]collectionTag, 0)
-		isDir := file.IsDir()
-		if !isDir {
-			for _, tag := range collectionTags {
-				if strings.Contains(tag.filePath, file.Name()) {
-					matchedTags = append(matchedTags, tag)
-				}
-			}
-		}
-		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
-	}
-	return samples
-}
-
-func (s *server) getAllDirectories(path string) []string {
-	paths, err := os.ReadDir(path)
-	if err != nil {
-		log.Fatalf("Failed to read samples directory: %v", err)
-	}
-	var dirs []string
-	for _, path := range paths {
-		if path.IsDir() {
-			dirs = append(dirs, path.Name())
-		}
-	}
-	return dirs
-}
-
 func containsAllSubstrings(s1 string, s2 string) bool {
 	words := strings.Fields(s2)
+	s1 = strings.ToLower(s1)
+	s2 = strings.ToLower(s2)
 	for _, word := range words {
 		if !strings.Contains(s1, word) {
 			return false
@@ -1359,7 +1404,7 @@ func containsAllSubstrings(s1 string, s2 string) bool {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (s *server) fuzzySearch(search string, fromRoot bool) []selectableListItem {
+func (s *server) fuzzyFind(search string, fromRoot bool) []selectableListItem {
 	log.Println("in server fuzzy search fn")
 	var dir string
 	var entries []os.DirEntry = make([]os.DirEntry, 0)
@@ -1369,9 +1414,9 @@ func (s *server) fuzzySearch(search string, fromRoot bool) []selectableListItem 
 		return make([]selectableListItem, 0)
 	}
 	if fromRoot {
-		dir = s.root
+		dir = s.navState.root
 	} else {
-		dir = s.currentDir
+		dir = s.navState.currentDir
 	}
 	collectionTags := s.fuzzySearchCollectionTags(search)
 	log.Println("collection tags", collectionTags)
@@ -1394,8 +1439,7 @@ func (s *server) fuzzySearch(search string, fromRoot bool) []selectableListItem 
 				matchedTags = append(matchedTags, tag)
 			}
 		}
-		samples = append(samples, dirEntryWithTags{path: path, tags: matchedTags, isDir: false})
-		log.Println("path: ", path)
+		s.navState.pushChoice(dirEntryWithTags{path: path, tags: matchedTags, isDir: false})
 		return nil
 	})
 	if err != nil {
@@ -1422,13 +1466,11 @@ where t.file_path like ?`
 	}
 	defer rows.Close()
 	tags := make([]collectionTag, 0)
-	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
 		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
 	}
 	return tags
@@ -1657,8 +1699,8 @@ func (s *server) updateCollectionDescriptionInDb(id int, description string) {
 
 // Create a tag in the database
 func (s *server) createTagInDb(filePath string) int {
-	if !strings.Contains(filePath, s.root) {
-		filePath = filepath.Join(s.currentDir, filePath)
+	if !strings.Contains(filePath, s.navState.root) {
+		filePath = filepath.Join(s.navState.currentDir, filePath)
 	}
 	res, err := s.db.Exec("insert or ignore into Tag (file_path, user_id) values (?, ?)", filePath, s.currentUser.id)
 	if err != nil {
@@ -1741,7 +1783,7 @@ func (s *server) getCollectionSubcollections() []SubCollection {
 	return subCollections
 }
 
-func (s *server) searchCollectionSubcollecitons(search string) []SubCollection {
+func (s *server) searchCollectionSubcollections(search string) []SubCollection {
 	fuzzySearch := "%" + search + "%"
 	statement := `SELECT DISTINCT sub_collection
                   FROM CollectionTag
@@ -1802,11 +1844,13 @@ type AudioPlayer struct {
 	currentStreamer beep.StreamSeekCloser
 	commands        chan string
 	playing         bool
+	nextCommand     *string
 }
 
 // Push a play command to the audio player's commands channel
 func (a *AudioPlayer) pushPlayCommand(path string) {
 	log.Println("Pushing play command", path)
+	a.nextCommand = &path
 	a.commands <- path
 }
 
@@ -1886,6 +1930,9 @@ func (a *AudioPlayer) handlePlayCommand(path string) {
 	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
 		a.playing = false
 		log.Println("Finished playing audio")
+		if a.nextCommand != nil && *a.nextCommand == path {
+			a.nextCommand = nil
+		}
 		done <- true
 	})))
 	<-done
@@ -1897,6 +1944,9 @@ func (a *AudioPlayer) Run() {
 		select {
 		case path := <-a.commands:
 			log.Println("In Run, received play command", path)
+			if a.nextCommand != nil && *a.nextCommand != path {
+				continue
+			}
 			a.handlePlayCommand(path)
 		}
 	}
