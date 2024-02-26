@@ -1161,7 +1161,7 @@ func createDirectories(dir string) {
 
 // Handles either creating or checking the existence of the data and samples directories
 func (c *config) createDataDirectory() {
-    createDirectories(c.data)
+	createDirectories(c.data)
 }
 
 // Standardized file structure for the database file
@@ -1352,32 +1352,32 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		audioPlayer: audioPlayer,
 	}
 	users := s.getUsers(user)
-    log.Print("users: ", users)
-    log.Print("user: ", *user)
+	log.Print("users: ", users)
+	log.Print("user: ", *user)
 	if len(users) == 0 && len(*user) > 0 {
-        id := s.createUser(*user)
-        if id == 0 {
-            log.Fatal("Failed to create user")
-        }
-        s.currentUser = s.getUser(id)
-    } else if len(users) > 0 && len(*user) > 0  && users[0].name != *user {
-        createdIdx := s.createUser(*user)
-        s.currentUser = s.getUser(createdIdx)
-    } else if len(users) > 0 && len(*user) == 0 {
-        s.currentUser = users[0]
-    } else if len(users) > 0 && len(*user) > 0 {
-        found := 0
-        for i, u := range users {
-            if u.name == *user {
-                found = i
-            }
-        }
-        if found == 0 {
-            createdIdx := s.createUser(*user)
-            s.currentUser = s.getUser(createdIdx)
-        } else {
-            s.currentUser = users[found]
-        }
+		id := s.createUser(*user)
+		if id == 0 {
+			log.Fatal("Failed to create user")
+		}
+		s.currentUser = s.getUser(id)
+	} else if len(users) > 0 && len(*user) > 0 && users[0].name != *user {
+		createdIdx := s.createUser(*user)
+		s.currentUser = s.getUser(createdIdx)
+	} else if len(users) > 0 && len(*user) == 0 {
+		s.currentUser = users[0]
+	} else if len(users) > 0 && len(*user) > 0 {
+		found := 0
+		for i, u := range users {
+			if u.name == *user {
+				found = i
+			}
+		}
+		if found == 0 {
+			createdIdx := s.createUser(*user)
+			s.currentUser = s.getUser(createdIdx)
+		} else {
+			s.currentUser = users[found]
+		}
 	} else {
 		log.Fatal("No users found")
 	}
@@ -1601,24 +1601,24 @@ where t.file_path like ?`
 
 func (s *server) getUser(id int) user {
 	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
-    row := s.db.QueryRow(statement, id)
-    var name string
-    var collectionId *int
-    var collectionName *string
-    var collectionDescription *string
-    var autoAudition bool
-    var selectedSubCollection string
-    var root string
-    if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
-        log.Fatalf("Failed to scan row: %v", err)
-    }
-    var selectedCollection *collection
-    if collectionId != nil && collectionName != nil && collectionDescription != nil {
-        selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
-    } else {
-        selectedCollection = &collection{id: 0, name: "", description: ""}
-    }
-    return user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root}
+	row := s.db.QueryRow(statement, id)
+	var name string
+	var collectionId *int
+	var collectionName *string
+	var collectionDescription *string
+	var autoAudition bool
+	var selectedSubCollection string
+	var root string
+	if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
+		log.Fatalf("Failed to scan row: %v", err)
+	}
+	var selectedCollection *collection
+	if collectionId != nil && collectionName != nil && collectionDescription != nil {
+		selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+	} else {
+		selectedCollection = &collection{id: 0, name: "", description: ""}
+	}
+	return user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root}
 }
 
 // Get all users
@@ -2067,8 +2067,8 @@ type App struct {
 
 // Construct the app
 func NewApp() App {
-    path := utils.ExpandHomeDir("~/.excavator-tui")
-    createDirectories(path)
+	path := utils.ExpandHomeDir("~/.excavator-tui")
+	createDirectories(path)
 	f, err := os.OpenFile(filepath.Join(path, "logfile"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
