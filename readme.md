@@ -1,5 +1,6 @@
 # excavator
 ![Tests](https://github.com/jesses-code-adventures/excavator/actions/workflows/formatting.yml/badge.svg)
+
 a sample-browsing tui. for music producers with large sample libraries who are comfortable in the terminal.
 
 ## goal
