@@ -24,10 +24,13 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 
 ## features
 - [ ] first launch should prompt user to create a "root sample library".
-- [ ] launching with a directory as an argument should launch the program with a "temporary root library", and treat the session as though that is the root until the user quits.
-- [ ] if the application is launched with no root directory and a directory argument, the user should be asked whether they'd like to make the given directory the root.
-- [ ] create collections, which are ephemeral directories stored in (maybe apple pickle?) data types designed to be able to collection to a concrete directory you can drag-and-drop elsewhere.
-- [ ] create tags that assign the samples to sub-directory in a collection. these should not copy the file, but create a reference in the locally stored file.
+- [ ] if the application is launched with no root directory and a directory flag, the user should be asked whether they'd like to make the given directory the root.
+- [x] launching with a --data path sets the directory where long lived data, including the db file and the logfile is stored.
+- [x] launching with a --root launches the program with a temporary root, lasting until the session is closed.
+- [x] launching with a --user flag creates a new user whose name is the argument.
+- [x] launching with a --db flag sets the filename of the sqlite .db file. the extension does not need to be included with the argument.
+- [x] create collections, which are ephemeral directories stored in (maybe apple pickle?) data types designed to be able to collection to a concrete directory you can drag-and-drop elsewhere.
+- [x] create tags that assign the samples to sub-directory in a collection. these should not copy the file, but create a reference in the locally stored file.
 - [x] browse samples using J/up arrow and K/down arrow.
 - [x] samples should play asynchronously so the user can continue browsing while a sample plays
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.

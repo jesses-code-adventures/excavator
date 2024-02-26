@@ -1106,6 +1106,7 @@ type user struct {
 	autoAudition        bool
 	targetCollection    *collection
 	targetSubCollection string
+	root                string
 }
 
 // Struct holding the app's configuration
@@ -1117,41 +1118,50 @@ type config struct {
 }
 
 // Constructor for the Config struct
-func newConfig(data string, samples string, dbFileName string) *config {
-	log.Printf("data: %v, samples: %v", data, samples)
+func newConfig(data string, root string, dbFileName string) *config {
+	log.Printf("data: %v, samples: %v", data, root)
 	data = utils.ExpandHomeDir(data)
-	samples = utils.ExpandHomeDir(samples)
-	log.Printf("expanded data: %v, samples: %v", data, samples)
+	root = utils.ExpandHomeDir(root)
+	log.Printf("expanded data: %v, samples: %v", data, root)
 	sqlCommands, err := os.ReadFile("src/sql_commands/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
-	samplesExists := true
-	if _, err := os.Stat(samples); os.IsNotExist(err) {
-		samplesExists = false
+	rootExists := true
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		rootExists = false
 	}
-	if !samplesExists {
-		log.Fatalf("No samples directory found at %v", samples)
+	if !rootExists {
+		log.Fatalf("No root samples directory found at %v", root)
 	}
 	config := config{
 		data:              data,
-		root:              samples,
+		root:              root,
 		dbFileName:        dbFileName,
 		createSqlCommands: sqlCommands,
 	}
 	return &config
 }
 
-// Handles either creating or checking the existence of the data and samples directories
-func (c *config) handleDirectories() {
-	if _, err := os.Stat(c.data); os.IsNotExist(err) {
-		if err := os.MkdirAll(c.data, 0755); err != nil {
+func (c *config) setRoot(root string) {
+	root = utils.ExpandHomeDir(root)
+	c.root = root
+}
+
+func createDirectories(dir string) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			panic(err)
 		}
 	}
-	if _, err := os.Stat(c.root); os.IsNotExist(err) {
-		log.Fatal("No directory at config's samples directory ", c.root)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		log.Fatal("Creating directory failed at ", dir)
 	}
+}
+
+// Handles either creating or checking the existence of the data and samples directories
+func (c *config) createDataDirectory() {
+    createDirectories(c.data)
 }
 
 // Standardized file structure for the database file
@@ -1320,11 +1330,12 @@ type server struct {
 // Construct the server
 func newServer(audioPlayer *AudioPlayer) *server {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
-	var samples = flag.String("samples", "~/Library/Audio/Sounds/Samples", "Root samples directory")
+	var samples = flag.String("root", "~/Library/Audio/Sounds/Samples", "Root samples directory")
+	var user = flag.String("user", "jesse", "User name to launch with")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
 	flag.Parse()
 	config := newConfig(*data, *samples, *dbFileName)
-	config.handleDirectories()
+	config.createDataDirectory()
 	dbPath := config.getDbPath()
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -1340,16 +1351,60 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		db:          db,
 		audioPlayer: audioPlayer,
 	}
-	navState := newNavState(config.root, config.root, s.getCollectionTags)
-	s.navState = navState
-	users := s.getUsers()
-	if len(users) == 0 {
+	users := s.getUsers(user)
+    log.Print("users: ", users)
+    log.Print("user: ", *user)
+	if len(users) == 0 && len(*user) > 0 {
+        id := s.createUser(*user)
+        if id == 0 {
+            log.Fatal("Failed to create user")
+        }
+        s.currentUser = s.getUser(id)
+    } else if len(users) > 0 && len(*user) > 0  && users[0].name != *user {
+        createdIdx := s.createUser(*user)
+        s.currentUser = s.getUser(createdIdx)
+    } else if len(users) > 0 && len(*user) == 0 {
+        s.currentUser = users[0]
+    } else if len(users) > 0 && len(*user) > 0 {
+        found := 0
+        for i, u := range users {
+            if u.name == *user {
+                found = i
+            }
+        }
+        if found == 0 {
+            createdIdx := s.createUser(*user)
+            s.currentUser = s.getUser(createdIdx)
+        } else {
+            s.currentUser = users[found]
+        }
+	} else {
 		log.Fatal("No users found")
 	}
-	s.currentUser = users[0]
+	if s.currentUser.root == "" && config.root == "" {
+		log.Fatal("No root found")
+	} else if config.root == "" {
+		config.root = s.currentUser.root
+	} else if s.currentUser.root == "" {
+		s.currentUser.root = config.root // TODO: prompt the user to see if they want to save the root
+		s.updateRootInDb(config.root)
+	} else if s.currentUser.root != config.root {
+		log.Println("launched with temporary root ", config.root)
+		s.currentUser.root = config.root
+	}
 	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
+	navState := newNavState(config.root, config.root, s.getCollectionTags)
+	s.navState = navState
 	s.navState.updateChoices()
 	return &s
+}
+
+func (s *server) setRoot(path string) {
+	s.navState.root = path
+	s.navState.currentDir = path
+	s.navState.updateChoices()
+	s.currentUser.root = path
+	s.updateRootInDb(path)
 }
 
 // Set the current user's auto audition preference and update in db
@@ -1544,10 +1599,43 @@ where t.file_path like ?`
 	return tags
 }
 
+func (s *server) getUser(id int) user {
+	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
+    row := s.db.QueryRow(statement, id)
+    var name string
+    var collectionId *int
+    var collectionName *string
+    var collectionDescription *string
+    var autoAudition bool
+    var selectedSubCollection string
+    var root string
+    if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
+        log.Fatalf("Failed to scan row: %v", err)
+    }
+    var selectedCollection *collection
+    if collectionId != nil && collectionName != nil && collectionDescription != nil {
+        selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+    } else {
+        selectedCollection = &collection{id: 0, name: "", description: ""}
+    }
+    return user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root}
+}
+
 // Get all users
-func (s *server) getUsers() []user {
-	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection from User u left join Collection c on u.selected_collection = c.id`
-	rows, err := s.db.Query(statement)
+func (s *server) getUsers(name *string) []user {
+	var whereClause string
+	var rows *sql.Rows
+	var err error
+	if name != nil {
+		whereClause = "where u.name = ?"
+	}
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
+	if whereClause != "" {
+		statement = statement + " " + whereClause
+		rows, err = s.db.Query(statement, name)
+	} else {
+		rows, err = s.db.Query(statement)
+	}
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
 	}
@@ -1561,7 +1649,8 @@ func (s *server) getUsers() []user {
 		var collectionDescription *string
 		var autoAudition bool
 		var selectedSubCollection string
-		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection); err != nil {
+		var root string
+		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		var selectedCollection *collection
@@ -1570,14 +1659,14 @@ func (s *server) getUsers() []user {
 		} else {
 			selectedCollection = &collection{id: 0, name: "", description: ""}
 		}
-		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection})
+		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root})
 	}
 	return users
 }
 
 // Create a user in the database
 func (s *server) createUser(name string) int {
-	res, err := s.db.Exec("insert ignore into User (name) values (?)", name)
+	res, err := s.db.Exec("insert or ignore into User (name) values (?)", name)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in createUser: %v", err)
 	}
@@ -1593,6 +1682,14 @@ func (s *server) updateSelectedCollectionInDb(collection int) {
 	_, err := s.db.Exec("update User set selected_collection = ? where id = ?", collection, s.currentUser.id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSelectedCollectionInDb: %v", err)
+	}
+}
+
+// Update the current user's auto audition preference in the database
+func (s *server) updateRootInDb(path string) {
+	_, err := s.db.Exec("update User set root = ? where id = ?", path, s.currentUser.id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in update root in db: %v", err)
 	}
 }
 
@@ -1913,7 +2010,7 @@ func (a *AudioPlayer) handlePlayCommand(path string) {
 	log.Println("Handling play command", path)
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error opening file ", err)
 	}
 	defer f.Close()
 	a.playing = true
@@ -1970,7 +2067,9 @@ type App struct {
 
 // Construct the app
 func NewApp() App {
-	f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+    path := utils.ExpandHomeDir("~/.excavator-tui")
+    createDirectories(path)
+	f, err := os.OpenFile(filepath.Join(path, "logfile"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
