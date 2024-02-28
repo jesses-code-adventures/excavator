@@ -9,7 +9,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	// "os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -39,22 +38,22 @@ import (
 
 // ////////////////////// KEYMAPS ////////////////////////
 // I know this is bad but i want gg
-type keymapHacks struct {
+type KeymapHacks struct {
 	lastKey string
 }
 
 // Track this keystroke so it can be checked in the next one
-func (k *keymapHacks) updateLastKey(key string) {
+func (k *KeymapHacks) UpdateLastKey(key string) {
 	k.lastKey = key
 }
 
 // Get the previous keystroke
-func (k *keymapHacks) getLastKey() string {
+func (k *KeymapHacks) GetLastKey() string {
 	return k.lastKey
 }
 
 // For jumping to the top of the list
-func (k *keymapHacks) lastKeyWasG() bool {
+func (k *KeymapHacks) LastKeyWasG() bool {
 	return k.lastKey == "g"
 }
 
@@ -175,6 +174,20 @@ var DefaultKeyMap = KeyMap{
 
 // ////////////////////// STYLING ////////////////////////
 
+// Different window types
+type windowType int
+
+const (
+	DirectoryWalker windowType = iota
+	FormWindow
+	ListSelectionWindow
+	SearchableSelectableListWindow
+)
+
+func (w windowType) String() string {
+	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableList"}[w]
+}
+
 // All styles to be used throughout the ui
 var (
 	// colours
@@ -234,90 +247,90 @@ var (
 )
 
 // A singular form input control
-type formInput struct {
-	name  string
-	input textinput.Model
+type FormInput struct {
+	Name  string
+	Input textinput.Model
 }
 
 // Constructor for a form input
-func newFormInput(name string) formInput {
-	return formInput{
-		name:  name,
-		input: textinput.New(),
+func NewFormInput(name string) FormInput {
+	return FormInput{
+		Name:  name,
+		Input: textinput.New(),
 	}
 }
 
-// A generic form
-type form struct {
-	title        string
-	inputs       []formInput
-	writing      bool
-	focusedInput int
+// A generic Form
+type Form struct {
+	Title        string
+	Inputs       []FormInput
+	Writing      bool
+	FocusedInput int
 }
 
 // A form constructor
-func newForm(title string, inputs []formInput) form {
-	return form{
-		title:        title,
-		inputs:       inputs,
-		writing:      false,
-		focusedInput: 0,
+func NewForm(title string, inputs []FormInput) Form {
+	return Form{
+		Title:        title,
+		Inputs:       inputs,
+		Writing:      false,
+		FocusedInput: 0,
 	}
 }
 
 //// Form implementations ////
 
 // Get the inputs for the new collection form
-func getNewCollectionInputs() []formInput {
-	return []formInput{
-		newFormInput("name"),
-		newFormInput("description"),
+func GetNewCollectionInputs() []FormInput {
+	return []FormInput{
+		NewFormInput("name"),
+		NewFormInput("description"),
 	}
 }
 
 // Get the new collection form
-func getNewCollectionForm() form {
-	return newForm("create collection", getNewCollectionInputs())
+func GetNewCollectionForm() Form {
+	return NewForm("create collection", GetNewCollectionInputs())
 }
 
 // Get the inputs for the new collection form
-func getSearchInput() []formInput {
-	return []formInput{
-		newFormInput("search"),
+func GetSearchInput() []FormInput {
+	return []FormInput{
+		NewFormInput("search"),
 	}
 }
 
 // Get the new collection form
-func getTargetSubCollectionForm() form {
-	return newForm("set target subcollection", getSearchInput())
+func GetTargetSubCollectionForm() Form {
+	return NewForm("set target subcollection", GetSearchInput())
 }
 
 // Get the new collection form
-func getFuzzySearchRootForm() form {
-	return newForm("fuzzy search from root", getSearchInput())
+func GetFuzzySearchRootForm() Form {
+	return NewForm("fuzzy search from root", GetSearchInput())
 }
 
 // Get the inputs for the new collection form
-func getCreateCollectionTagInputs(defaultName string, defaultSubCollection string) []formInput {
-	name := newFormInput("name")
-	name.input.SetValue(defaultName)
-	subcollection := newFormInput("subcollection")
-	subcollection.input.SetValue(defaultSubCollection)
-	return []formInput{
+func GetCreateCollectionTagInputs(defaultName string, defaultSubCollection string) []FormInput {
+	name := NewFormInput("name")
+	name.Input.SetValue(defaultName)
+	subcollection := NewFormInput("subcollection")
+	subcollection.Input.SetValue(defaultSubCollection)
+	return []FormInput{
 		name,
 		subcollection,
 	}
 }
 
 // Get the new collection form
-func getCreateTagForm(defaultName string, defaultSubCollection string) form {
-	return newForm("create tag", getCreateCollectionTagInputs(defaultName, defaultSubCollection))
+func GetCreateTagForm(defaultName string, defaultSubCollection string) Form {
+	return NewForm("create tag", GetCreateCollectionTagInputs(defaultName, defaultSubCollection))
 }
 
 /// List selection ///
 
 // Interface for list selection items so the list can easily be reused
-type selectableListItem interface {
+type SelectableListItem interface {
 	Id() int
 	Name() string
 	Description() string
@@ -326,110 +339,100 @@ type selectableListItem interface {
 }
 
 // A list where a single item can be selected
-type selectableList struct {
-	title string
+type SelectableList struct {
+	Title string
 }
 
 // A constructor for a selectable list
-type searchableSelectableList struct {
-	title  string
-	search formInput
+type SearchableSelectableList struct {
+	Title  string
+	Search FormInput
 }
 
-func newSearchableList(title string) searchableSelectableList {
-	return searchableSelectableList{
-		title: title,
-		search: formInput{
-			name:  "search",
-			input: textinput.New(),
+func NewSearchableList(title string) SearchableSelectableList {
+	return SearchableSelectableList{
+		Title: title,
+		Search: FormInput{
+			Name:  "search",
+			Input: textinput.New(),
 		},
 	}
 }
 
-func (m model) filterListItems() model {
-	var resp []selectableListItem
-	switch m.searchableSelectableList.title {
+func (m Model) FilterListItems() Model {
+	var resp []SelectableListItem
+	switch m.SearchableSelectableList.Title {
 	case "set target subcollection":
-		r := m.server.searchCollectionSubcollections(m.searchableSelectableList.search.input.Value())
-		newArray := make([]selectableListItem, 0)
+		r := m.Server.SearchCollectionSubcollections(m.SearchableSelectableList.Search.Input.Value())
+		newArray := make([]SelectableListItem, 0)
 		for _, item := range r {
 			newArray = append(newArray, item)
 		}
 		resp = newArray
-		m.server.navState.choices = resp
+		m.Server.State.Choices = resp
 	case "fuzzy search from root":
 		log.Println("performing fuzzy search")
-		m.server.fuzzyFind(m.searchableSelectableList.search.input.Value(), true)
+		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), true)
 	case "fuzzy search window":
 		log.Println("performing fuzzy search")
-		m.server.fuzzyFind(m.searchableSelectableList.search.input.Value(), false)
+		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), false)
 	}
 	return m
 }
 
-// A generic model defining app behaviour in all states
-type model struct {
-	ready                    bool
-	quitting                 bool
-	showCollections          bool
-	cursor                   int
-	prevCursor               int
-	viewportHeight           int
-	viewportWidth            int
-	keys                     KeyMap
-	keyHack                  keymapHacks
-	server                   *server
-	viewport                 viewport.Model
-	help                     help.Model
-	windowType               windowType
-	form                     form
-	selectableList           string
-	searchableSelectableList searchableSelectableList
-}
-
-// Different window types
-type windowType int
-
-const (
-	DirectoryWalker windowType = iota
-	FormWindow
-	ListSelectionWindow
-	SearchableSelectableList
-)
-
-func (w windowType) String() string {
-	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableList"}[w]
+// A generic Model defining app behaviour in all states
+type Model struct {
+	Ready                    bool
+	Quitting                 bool
+	ShowCollections          bool
+	Cursor                   int
+	PrevCursor               int
+	ViewportHeight           int
+	ViewportWidth            int
+	Keys                     KeyMap
+	KeyHack                  KeymapHacks
+	Server                   *Server
+	Viewport                 viewport.Model
+	Help                     help.Model
+	WindowType               windowType
+	Form                     Form
+	SelectableList           string
+	SearchableSelectableList SearchableSelectableList
 }
 
 // Constructor for the app's model
-func excavatorModel(server *server) model {
-	return model{
-		ready:           false,
-		quitting:        false,
-		showCollections: false,
-		server:          server,
-		help:            help.New(),
-		keys:            DefaultKeyMap,
-		windowType:      DirectoryWalker,
+func ExcavatorModel(server *Server) Model {
+	return Model{
+		Ready:           false,
+		Quitting:        false,
+		ShowCollections: false,
+		Server:          server,
+		Help:            help.New(),
+		Keys:            DefaultKeyMap,
+		WindowType:      DirectoryWalker,
 	}
 }
 
 // Get the header of the viewport
-func (m model) headerView() string {
+func (m Model) HeaderView() string {
 	title := titleStyle.Render("Excavator - Samples")
-	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(title)))
+	line := strings.Repeat("─", max(0, m.Viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
-type statusDisplayItem struct {
+type StatusDisplayItem struct {
 	key        string
 	value      string
 	keyStyle   lipgloss.Style
 	valueStyle lipgloss.Style
 }
 
-func newStatusDisplayItem(key string, value string) statusDisplayItem {
-	return statusDisplayItem{
+func (s StatusDisplayItem) View() string {
+	return s.keyStyle.Render(s.key+": ") + s.valueStyle.Render(s.value)
+}
+
+func NewStatusDisplayItem(key string, value string) StatusDisplayItem {
+	return StatusDisplayItem{
 		key:        key,
 		value:      value,
 		keyStyle:   helpKeyStyle,
@@ -437,22 +440,18 @@ func newStatusDisplayItem(key string, value string) statusDisplayItem {
 	}
 }
 
-func (s statusDisplayItem) View() string {
-	return s.keyStyle.Render(s.key+": ") + s.valueStyle.Render(s.value)
-}
-
 // Display key info to user
-func (m model) getStatusDisplay() string {
-	termWidth := m.viewport.Width
+func (m Model) GetStatusDisplay() string {
+	termWidth := m.Viewport.Width
 	msg := ""
 	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v, descriptions: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection, m.windowType.String(), len(m.server.navState.choices), m.showCollections)
-	items := []statusDisplayItem{
-		newStatusDisplayItem("collection", m.server.currentUser.targetCollection.Name()),
-		newStatusDisplayItem("subcollection", m.server.currentUser.targetSubCollection),
-		newStatusDisplayItem("window", fmt.Sprintf("%v", m.windowType.String())),
-		newStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.server.navState.choices))),
-		newStatusDisplayItem("descriptions", fmt.Sprintf("%v", m.showCollections)),
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v, descriptions: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, m.WindowType.String(), len(m.Server.State.Choices), m.ShowCollections)
+	items := []StatusDisplayItem{
+		NewStatusDisplayItem("collection", m.Server.User.TargetCollection.Name()),
+		NewStatusDisplayItem("subcollection", m.Server.User.TargetSubCollection),
+		NewStatusDisplayItem("window", fmt.Sprintf("%v", m.WindowType.String())),
+		NewStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.Server.State.Choices))),
+		NewStatusDisplayItem("descriptions", fmt.Sprintf("%v", m.ShowCollections)),
 	}
 	for i, item := range items {
 		msg += item.View()
@@ -470,9 +469,9 @@ func (m model) getStatusDisplay() string {
 }
 
 // Get the footer of the view
-func (m model) footerView() string {
-	helpText := m.help.View(m.keys)
-	termWidth := m.viewport.Width
+func (m Model) FooterView() string {
+	helpText := m.Help.View(m.Keys)
+	termWidth := m.Viewport.Width
 	helpTextLength := lipgloss.Width(helpText)
 	padding := (termWidth - helpTextLength) / 2
 	if padding < 0 {
@@ -481,46 +480,45 @@ func (m model) footerView() string {
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
 	var searchInput string
-	if m.windowType == SearchableSelectableList {
-		searchInput = searchInputBoxStyle.Render(m.searchableSelectableList.search.input.View())
-		return searchInput + "\n" + m.getStatusDisplay() + "\n" + centeredHelpText
-
+	if m.WindowType == SearchableSelectableListWindow {
+		searchInput = searchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
+		return searchInput + "\n" + m.GetStatusDisplay() + "\n" + centeredHelpText
 	}
-	return m.getStatusDisplay() + "\n" + centeredHelpText
+	return m.GetStatusDisplay() + "\n" + centeredHelpText
 }
 
 // Formview handler
-func (m model) formView() string {
+func (m Model) FormView() string {
 	s := ""
-	log.Println("got form ", m.form)
-	for i, input := range m.form.inputs {
-		if m.form.focusedInput == i {
-			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+	log.Println("got form ", m.Form)
+	for i, input := range m.Form.Inputs {
+		if m.Form.FocusedInput == i {
+			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
 		} else {
-			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.name, input.input.View()))
+			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
 		}
 	}
 	return s
 }
 
 // Standard content handler
-func (m model) directoryView() string {
+func (m Model) DirectoryView() string {
 	s := ""
-	for i, choice := range m.server.navState.choices {
+	for i, choice := range m.Server.State.Choices {
 		var newLine string
-		if m.cursor == i {
+		if m.Cursor == i {
 			cursor := "--> "
 			newLine = fmt.Sprintf("%s %s", cursor, choice.Name())
 		} else {
 			newLine = fmt.Sprintf("     %s", choice.Name())
 		}
-		if len(newLine) > m.viewport.Width {
-			newLine = newLine[:m.viewport.Width-2]
+		if len(newLine) > m.Viewport.Width {
+			newLine = newLine[:m.Viewport.Width-2]
 		}
-		if m.cursor == i {
+		if m.Cursor == i {
 			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 		} else {
-			if m.showCollections {
+			if m.ShowCollections {
 				newLine = unselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 			} else {
 				newLine = unselectedStyle.Render(newLine)
@@ -531,40 +529,33 @@ func (m model) directoryView() string {
 	return s
 }
 
-// Necessary for bubbletea model interface
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
 // // Ui updating for window resize events
-func (m model) handleWindowResize(msg tea.WindowSizeMsg) model {
-	headerHeight := lipgloss.Height(m.headerView())
-	footerHeight := lipgloss.Height(m.footerView())
+func (m Model) HandleWindowResize(msg tea.WindowSizeMsg) Model {
+	headerHeight := lipgloss.Height(m.HeaderView())
+	footerHeight := lipgloss.Height(m.FooterView())
 	searchInputHeight := 2 // Assuming the search input height is approximately 2 lines
 	verticalPadding := 2   // Adjust based on your app's padding around the viewport
 	// Calculate available height differently if in SearchableSelectableList mode
-	if m.windowType == SearchableSelectableList {
-		m.viewportHeight = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
+	if m.WindowType == SearchableSelectableListWindow {
+		m.ViewportHeight = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
 	} else {
-		m.viewportHeight = msg.Height - headerHeight - footerHeight - verticalPadding
+		m.ViewportHeight = msg.Height - headerHeight - footerHeight - verticalPadding
 	}
-
-	m.viewport.Width = msg.Width
-	m.viewport.Height = m.viewportHeight
-	m.ready = true
-
+	m.Viewport.Width = msg.Width
+	m.Viewport.Height = m.ViewportHeight
+	m.Ready = true
 	return m
 }
 
 // Handle viewport positioning
-func (m model) ensureCursorVerticallyCentered() viewport.Model {
-	if m.windowType != DirectoryWalker {
-		m.viewport.GotoTop()
-		return m.viewport
+func (m Model) EnsureCursorVerticallyCentered() viewport.Model {
+	if m.WindowType != DirectoryWalker {
+		m.Viewport.GotoTop()
+		return m.Viewport
 	}
-	viewport := m.viewport
+	viewport := m.Viewport
 	itemHeight := 2
-	cursorPosition := m.cursor * itemHeight
+	cursorPosition := m.Cursor * itemHeight
 	viewportHeight := viewport.Height
 	viewport.YOffset = (cursorPosition - viewportHeight + itemHeight) + (viewportHeight / 2)
 	if viewport.PastBottom() {
@@ -585,244 +576,249 @@ func max(a, b int) int {
 }
 
 // Set the content of the viewport based on the window type
-func (m model) setViewportContent(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
-	switch m.windowType {
+func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
+	switch m.WindowType {
 	case FormWindow:
-		m.viewport.SetContent(m.formView())
+		m.Viewport.SetContent(m.FormView())
 	case DirectoryWalker:
-		m.viewport = m.ensureCursorVerticallyCentered()
-		m.viewport.SetContent(m.directoryView())
+		m.Viewport = m.EnsureCursorVerticallyCentered()
+		m.Viewport.SetContent(m.DirectoryView())
 	case ListSelectionWindow:
-		m.viewport.SetContent(m.directoryView())
-	case SearchableSelectableList:
-		m.viewport = m.ensureCursorVerticallyCentered()
-		m.viewport.SetContent(m.directoryView())
+		m.Viewport.SetContent(m.DirectoryView())
+	case SearchableSelectableListWindow:
+		m.Viewport = m.EnsureCursorVerticallyCentered()
+		m.Viewport.SetContent(m.DirectoryView())
 	default:
-		m.viewport.SetContent("Invalid window type")
+		m.Viewport.SetContent("Invalid window type")
 	}
 	return m, cmd
 }
 
 // Handle all view rendering
-func (m model) View() string {
-	if m.quitting {
+func (m Model) View() string {
+	if m.Quitting {
 		return ""
 	}
-	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
+	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.HeaderView(), viewportStyle.Render(m.Viewport.View()), m.FooterView()))
+}
+
+// Necessary for bubbletea model interface
+func (m Model) Init() tea.Cmd {
+	return nil
 }
 
 // ////////////////////// UI UPDATING ////////////////////////
 
-func (m model) clearModel() model {
-	m.form = form{}
-	m.server.navState.choices = make([]selectableListItem, 0)
-	m.searchableSelectableList = searchableSelectableList{}
-	m.cursor = 0
+func (m Model) ClearModel() Model {
+	m.Form = Form{}
+	m.Server.State.Choices = make([]SelectableListItem, 0)
+	m.SearchableSelectableList = SearchableSelectableList{}
+	m.Cursor = 0
 	return m
 }
 
 // Standard "home" view
-func (m model) goToMainWindow(msg tea.Msg, cmd tea.Cmd) (model, tea.Cmd) {
-	m = m.clearModel()
-	m.windowType = DirectoryWalker
-	m.server.updateChoices()
+func (m Model) GoToMainWindow(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
+	m = m.ClearModel()
+	m.WindowType = DirectoryWalker
+	m.Server.UpdateChoices()
 	return m, cmd
 }
 
 // Individual logic handlers for each list - setting window type handled outside this function
-func (m model) handleTitledList(msg tea.Msg, cmd tea.Cmd, title string) (model, tea.Cmd) {
+func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, title string) (Model, tea.Cmd) {
 	switch title {
 	case "set target subcollection":
-		subCollections := m.server.getCollectionSubcollections()
+		subCollections := m.Server.GetCollectionSubcollections()
 		for _, subCollection := range subCollections {
-			m.server.navState.choices = append(m.server.navState.choices, subCollection)
+			m.Server.State.Choices = append(m.Server.State.Choices, subCollection)
 		}
 	case "select collection":
-		collections := m.server.getCollections()
-		m.selectableList = title
+		collections := m.Server.GetCollections()
+		m.SelectableList = title
 		for _, collection := range collections {
-			m.server.navState.choices = append(m.server.navState.choices, collection)
+			m.Server.State.Choices = append(m.Server.State.Choices, collection)
 		}
 	case "search for collection":
-		collections := m.server.getCollections()
-		m.selectableList = title
+		collections := m.Server.GetCollections()
+		m.SelectableList = title
 		for _, collection := range collections {
-			m.server.navState.choices = append(m.server.navState.choices, collection)
+			m.Server.State.Choices = append(m.Server.State.Choices, collection)
 		}
 	case "fuzzy search from root":
-		files := m.server.fuzzyFind("", true)
+		files := m.Server.FuzzyFind("", true)
 		for _, subCollection := range files {
-			m.server.navState.choices = append(m.server.navState.choices, subCollection)
+			m.Server.State.Choices = append(m.Server.State.Choices, subCollection)
 		}
 	default:
 		log.Fatalf("Invalid searchable selectable list title")
 	}
-	m.searchableSelectableList = newSearchableList(title)
+	m.SearchableSelectableList = NewSearchableList(title)
 	return m, cmd
 }
 
-func (m model) handleForm(msg tea.Msg, cmd tea.Cmd, title string) (model, tea.Cmd) {
+func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, title string) (Model, tea.Cmd) {
 	switch title {
 	case "new collection":
-		m = m.clearModel()
-		m.form = getNewCollectionForm()
+		m = m.ClearModel()
+		m.Form = GetNewCollectionForm()
 	case "create tag":
-		m.form = getCreateTagForm(path.Base(m.server.navState.choices[m.cursor].Name()), m.server.currentUser.targetSubCollection)
+		m.Form = GetCreateTagForm(path.Base(m.Server.State.Choices[m.Cursor].Name()), m.Server.User.TargetSubCollection)
 	}
 	return m, cmd
 }
 
 // Main handler to be called any time the window changes
-func (m model) setWindowType(msg tea.Msg, cmd tea.Cmd, windowType windowType, title string) (model, tea.Cmd) {
-	if m.windowType == windowType && m.searchableSelectableList.title == title {
-		m, cmd = m.goToMainWindow(msg, cmd)
+func (m Model) SetWindowType(msg tea.Msg, cmd tea.Cmd, windowType windowType, title string) (Model, tea.Cmd) {
+	if m.WindowType == windowType && m.SearchableSelectableList.Title == title {
+		m, cmd = m.GoToMainWindow(msg, cmd)
 		return m, cmd
 	}
 	log.Println("got window type ", windowType.String())
 	switch windowType {
 	case DirectoryWalker:
-		m = m.clearModel()
-		m, cmd = m.goToMainWindow(msg, cmd)
+		m = m.ClearModel()
+		m, cmd = m.GoToMainWindow(msg, cmd)
 	case FormWindow:
 		if title == "" {
 			log.Fatalf("Title required for forms")
 		}
-		m, cmd = m.handleForm(msg, cmd, title)
+		m, cmd = m.HandleForm(msg, cmd, title)
 	case ListSelectionWindow:
-		m = m.clearModel()
+		m = m.ClearModel()
 		if title == "" {
 			log.Fatalf("Title required for lists")
 		}
-		m, cmd = m.handleTitledList(msg, cmd, title)
-	case SearchableSelectableList:
-		m = m.clearModel()
+		m, cmd = m.HandleTitledList(msg, cmd, title)
+	case SearchableSelectableListWindow:
+		m = m.ClearModel()
 		if title == "" {
 			log.Fatalf("Title required for lists")
 		}
-		m, cmd = m.handleTitledList(msg, cmd, title)
+		m, cmd = m.HandleTitledList(msg, cmd, title)
 	default:
 		log.Fatalf("Invalid window type")
 	}
-	m.windowType = windowType
-	m.cursor = 0
+	m.WindowType = windowType
+	m.Cursor = 0
 	return m, cmd
 }
 
 // Audition the file under the cursor
-func (m model) auditionCurrentlySelectedFile() {
-	if len(m.server.navState.choices) == 0 {
+func (m Model) AuditionCurrentlySelectedFile() {
+	if len(m.Server.State.Choices) == 0 {
 		return
 	}
-	choice := m.server.navState.choices[m.cursor]
+	choice := m.Server.State.Choices[m.Cursor]
 	if !choice.IsDir() && choice.IsFile() {
 		var path string
-		if !strings.Contains(choice.Name(), m.server.navState.currentDir) {
-			path = filepath.Join(m.server.navState.currentDir, choice.Name())
+		if !strings.Contains(choice.Name(), m.Server.State.Dir) {
+			path = filepath.Join(m.Server.State.Dir, choice.Name())
 		} else {
 			path = choice.Name()
 		}
-		go m.server.audioPlayer.PlayAudioFile(path)
+		go m.Server.Player.PlayAudioFile(path)
 	}
 }
 
 // These functions should run every time the cursor moves in directory view
-func (m model) dirVerticalNavEffect() {
-	if m.server.currentUser.autoAudition {
-		m.auditionCurrentlySelectedFile()
+func (m Model) DirVerticalNavEffect() {
+	if m.Server.User.AutoAudition {
+		m.AuditionCurrentlySelectedFile()
 	}
 }
 
 // To be used across many window types for navigation
-func (m model) handleStandardMovementKey(msg tea.KeyMsg) model {
+func (m Model) HandleStandardMovementKey(msg tea.KeyMsg) Model {
 	switch {
-	case key.Matches(msg, m.keys.Up):
-		if m.cursor > 0 {
-			m.cursor--
+	case key.Matches(msg, m.Keys.Up):
+		if m.Cursor > 0 {
+			m.Cursor--
 		}
-		m.dirVerticalNavEffect()
-	case key.Matches(msg, m.keys.Down):
-		if m.cursor < len(m.server.navState.choices)-1 {
-			m.cursor++
+		m.DirVerticalNavEffect()
+	case key.Matches(msg, m.Keys.Down):
+		if m.Cursor < len(m.Server.State.Choices)-1 {
+			m.Cursor++
 		}
-		m.dirVerticalNavEffect()
-	case key.Matches(msg, m.keys.JumpDown):
-		if m.cursor < len(m.server.navState.choices)-8 {
-			m.cursor += 8
+		m.DirVerticalNavEffect()
+	case key.Matches(msg, m.Keys.JumpDown):
+		if m.Cursor < len(m.Server.State.Choices)-8 {
+			m.Cursor += 8
 		} else {
-			m.cursor = len(m.server.navState.choices) - 1
+			m.Cursor = len(m.Server.State.Choices) - 1
 		}
-		m.dirVerticalNavEffect()
-	case key.Matches(msg, m.keys.JumpUp):
-		if m.cursor > 8 {
-			m.cursor -= 8
+		m.DirVerticalNavEffect()
+	case key.Matches(msg, m.Keys.JumpUp):
+		if m.Cursor > 8 {
+			m.Cursor -= 8
 		} else {
-			m.cursor = 0
+			m.Cursor = 0
 		}
-		m.dirVerticalNavEffect()
-	case key.Matches(msg, m.keys.Audition):
-		m.auditionCurrentlySelectedFile()
-	case key.Matches(msg, m.keys.AuditionRandom):
-		fileIndex := m.server.navState.getRandomAudioFileIndex()
+		m.DirVerticalNavEffect()
+	case key.Matches(msg, m.Keys.Audition):
+		m.AuditionCurrentlySelectedFile()
+	case key.Matches(msg, m.Keys.AuditionRandom):
+		fileIndex := m.Server.State.GetRandomAudioFileIndex()
 		if fileIndex != -1 {
-			m.cursor = fileIndex
-			m.dirVerticalNavEffect()
+			m.Cursor = fileIndex
+			m.DirVerticalNavEffect()
 		}
-		if !m.server.currentUser.autoAudition {
-			m.auditionCurrentlySelectedFile()
+		if !m.Server.User.AutoAudition {
+			m.AuditionCurrentlySelectedFile()
 		}
-	case key.Matches(msg, m.keys.JumpBottom):
-		m.viewport.GotoBottom()
-		m.cursor = len(m.server.navState.choices) - 1
-		m.dirVerticalNavEffect()
+	case key.Matches(msg, m.Keys.JumpBottom):
+		m.Viewport.GotoBottom()
+		m.Cursor = len(m.Server.State.Choices) - 1
+		m.DirVerticalNavEffect()
 	}
 	return m
 }
 
 // Handle a single key press
-func (m model) handleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
+	case key.Matches(msg, m.Keys.Quit):
+		m.Quitting = true
 		return m, cmd
-	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
-		m = m.handleStandardMovementKey(msg)
-	case key.Matches(msg, m.keys.Enter):
-		choice := m.server.navState.choices[m.cursor]
+	case key.Matches(msg, m.Keys.Up) || key.Matches(msg, m.Keys.Down) || key.Matches(msg, m.Keys.JumpDown) || key.Matches(msg, m.Keys.JumpUp) || key.Matches(msg, m.Keys.Audition) || key.Matches(msg, m.Keys.AuditionRandom) || key.Matches(msg, m.Keys.JumpBottom):
+		m = m.HandleStandardMovementKey(msg)
+	case key.Matches(msg, m.Keys.Enter):
+		choice := m.Server.State.Choices[m.Cursor]
 		if choice.IsDir() {
 			if choice.Name() == ".." {
-				m.cursor = 0
-				m.server.navState.changeToParentDir()
+				m.Cursor = 0
+				m.Server.State.ChangeToParentDir()
 			} else {
-				m.cursor = 0
-				m.server.navState.changeDir(choice.Name())
+				m.Cursor = 0
+				m.Server.State.ChangeDir(choice.Name())
 			}
 		}
-	case key.Matches(msg, m.keys.ToggleShowCollections):
-		m.showCollections = !m.showCollections
-	case key.Matches(msg, m.keys.NewCollection):
-		m, cmd = m.setWindowType(msg, cmd, FormWindow, "new collection")
-	case key.Matches(msg, m.keys.SetTargetSubCollection):
+	case key.Matches(msg, m.Keys.ToggleShowCollections):
+		m.ShowCollections = !m.ShowCollections
+	case key.Matches(msg, m.Keys.NewCollection):
+		m, cmd = m.SetWindowType(msg, cmd, FormWindow, "new collection")
+	case key.Matches(msg, m.Keys.SetTargetSubCollection):
 		log.Println("going to set target subcollection")
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "set target subcollection")
-	case key.Matches(msg, m.keys.FuzzySearchFromRoot):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "fuzzy search from root")
-	case key.Matches(msg, m.keys.SetTargetCollection):
-		m, cmd = m.setWindowType(msg, cmd, ListSelectionWindow, "search for collection")
-	case key.Matches(msg, m.keys.ToggleAutoAudition):
-		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
-	case key.Matches(msg, m.keys.CreateQuickTag):
-		choice := m.server.navState.choices[m.cursor]
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "set target subcollection")
+	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "fuzzy search from root")
+	case key.Matches(msg, m.Keys.SetTargetCollection):
+		m, cmd = m.SetWindowType(msg, cmd, ListSelectionWindow, "search for collection")
+	case key.Matches(msg, m.Keys.ToggleAutoAudition):
+		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
+	case key.Matches(msg, m.Keys.CreateQuickTag):
+		choice := m.Server.State.Choices[m.Cursor]
 		if !choice.IsDir() {
-			m.server.createQuickTag(choice.Name())
+			m.Server.CreateQuickTag(choice.Name())
 		}
-		m.server.updateChoices()
-	case key.Matches(msg, m.keys.CreateTag):
-		m, cmd = m.setWindowType(msg, cmd, FormWindow, "create tag")
+		m.Server.UpdateChoices()
+	case key.Matches(msg, m.Keys.CreateTag):
+		m, cmd = m.SetWindowType(msg, cmd, FormWindow, "create tag")
 	default:
 		switch msg.String() {
 		case "g":
-			if m.keyHack.getLastKey() == "g" {
-				m.cursor = 0
+			if m.KeyHack.GetLastKey() == "g" {
+				m.Cursor = 0
 			}
 		}
 	}
@@ -830,31 +826,31 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) 
 }
 
 // List selection navigation
-func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return m.goToMainWindow(msg, cmd)
-	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
-		m = m.handleStandardMovementKey(msg)
-	case key.Matches(msg, m.keys.ToggleShowCollections):
-		m.showCollections = !m.showCollections
-	case key.Matches(msg, m.keys.NewCollection):
-		m.form = getNewCollectionForm()
-		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
-	case key.Matches(msg, m.keys.SetTargetCollection):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for collection")
-	case key.Matches(msg, m.keys.SetTargetSubCollection):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "set target subcollection")
-	case key.Matches(msg, m.keys.FuzzySearchFromRoot):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "fuzzy search from root")
-	case key.Matches(msg, m.keys.ToggleAutoAudition):
-		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
-	case key.Matches(msg, m.keys.Enter):
-		switch m.selectableList {
+	case key.Matches(msg, m.Keys.Quit):
+		return m.GoToMainWindow(msg, cmd)
+	case key.Matches(msg, m.Keys.Up) || key.Matches(msg, m.Keys.Down) || key.Matches(msg, m.Keys.JumpDown) || key.Matches(msg, m.Keys.JumpUp) || key.Matches(msg, m.Keys.Audition) || key.Matches(msg, m.Keys.AuditionRandom) || key.Matches(msg, m.Keys.JumpBottom):
+		m = m.HandleStandardMovementKey(msg)
+	case key.Matches(msg, m.Keys.ToggleShowCollections):
+		m.ShowCollections = !m.ShowCollections
+	case key.Matches(msg, m.Keys.NewCollection):
+		m.Form = GetNewCollectionForm()
+		m, cmd = m.SetWindowType(msg, cmd, FormWindow, "")
+	case key.Matches(msg, m.Keys.SetTargetCollection):
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "search for collection")
+	case key.Matches(msg, m.Keys.SetTargetSubCollection):
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "set target subcollection")
+	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "fuzzy search from root")
+	case key.Matches(msg, m.Keys.ToggleAutoAudition):
+		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
+	case key.Matches(msg, m.Keys.Enter):
+		switch m.SelectableList {
 		case "search for collection":
-			if collection, ok := m.server.navState.choices[m.cursor].(collection); ok {
-				m.server.updateTargetCollection(collection)
-				m, cmd = m.goToMainWindow(msg, cmd)
+			if collection, ok := m.Server.State.Choices[m.Cursor].(Collection); ok {
+				m.Server.UpdateTargetCollection(collection)
+				m, cmd = m.GoToMainWindow(msg, cmd)
 			} else {
 				log.Fatalf("Invalid list selection item type")
 			}
@@ -864,270 +860,270 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 }
 
 // Form key
-func (m model) handleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
-	if m.form.writing {
-		m, cmd = m.handleFormWritingKey(msg, cmd)
+func (m Model) HandleFormKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
+	if m.Form.Writing {
+		m, cmd = m.HandleFormWritingKey(msg, cmd)
 	} else {
-		m, cmd = m.handleFormNavigationKey(msg, cmd)
+		m, cmd = m.HandleFormNavigationKey(msg, cmd)
 	}
 	return m, cmd
 }
 
 // Form navigation
-func (m model) handleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Up):
-		m.form.inputs[m.form.focusedInput].input.Blur()
-		m.form.focusedInput++
-		if m.form.focusedInput >= len(m.form.inputs) {
-			m.form.focusedInput = 0
+	case key.Matches(msg, m.Keys.Up):
+		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
+		m.Form.FocusedInput++
+		if m.Form.FocusedInput >= len(m.Form.Inputs) {
+			m.Form.FocusedInput = 0
 		}
-		m.form.inputs[m.form.focusedInput].input.Focus()
-	case key.Matches(msg, m.keys.Down):
-		m.form.inputs[m.form.focusedInput].input.Blur()
-		m.form.focusedInput--
-		if m.form.focusedInput < 0 {
-			m.form.focusedInput = len(m.form.inputs) - 1
+		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
+	case key.Matches(msg, m.Keys.Down):
+		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
+		m.Form.FocusedInput--
+		if m.Form.FocusedInput < 0 {
+			m.Form.FocusedInput = len(m.Form.Inputs) - 1
 		}
-		m.form.inputs[m.form.focusedInput].input.Focus()
-	case key.Matches(msg, m.keys.InsertMode):
-		m.form.inputs[m.form.focusedInput].input.Blur()
-		m.form.writing = true
-		m.form.inputs[m.form.focusedInput].input.Focus()
-	case key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.NewCollection), key.Matches(msg, m.keys.SetTargetSubCollection), key.Matches(msg, m.keys.FuzzySearchFromRoot):
-		m, cmd = m.goToMainWindow(msg, cmd)
-	case key.Matches(msg, m.keys.SetTargetCollection):
+		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
+	case key.Matches(msg, m.Keys.InsertMode):
+		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
+		m.Form.Writing = true
+		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
+	case key.Matches(msg, m.Keys.Quit), key.Matches(msg, m.Keys.NewCollection), key.Matches(msg, m.Keys.SetTargetSubCollection), key.Matches(msg, m.Keys.FuzzySearchFromRoot):
+		m, cmd = m.GoToMainWindow(msg, cmd)
+	case key.Matches(msg, m.Keys.SetTargetCollection):
 		// m, cmd = m.handleListSelectionKey(msg, cmd)
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for collection")
-	case key.Matches(msg, m.keys.ToggleAutoAudition):
-		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
-	case key.Matches(msg, m.keys.Enter):
-		for i, input := range m.form.inputs {
-			if input.input.Value() == "" {
-				m.form.focusedInput = i
-				m.form.inputs[i].input.Focus()
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "search for collection")
+	case key.Matches(msg, m.Keys.ToggleAutoAudition):
+		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
+	case key.Matches(msg, m.Keys.Enter):
+		for i, input := range m.Form.Inputs {
+			if input.Input.Value() == "" {
+				m.Form.FocusedInput = i
+				m.Form.Inputs[i].Input.Focus()
 				return m, cmd
 			}
 		}
-		switch m.form.title {
+		switch m.Form.Title {
 		case "create collection":
-			m.server.createCollection(m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+			m.Server.CreateCollection(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
 		case "create tag":
-			m.server.createTag(m.server.navState.choices[m.cursor].Name(), m.form.inputs[0].input.Value(), m.form.inputs[1].input.Value())
+			m.Server.CreateTag(m.Server.State.Choices[m.Cursor].Name(), m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
 		}
 		// case "set target subcollection":
 		// 	m.server.updateTargetSubCollection(m.form.inputs[0].input.Value())
-		m, cmd = m.goToMainWindow(msg, cmd)
+		m, cmd = m.GoToMainWindow(msg, cmd)
 	}
 	return m, cmd
 }
 
 // Form writing
-func (m model) handleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m Model) HandleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		m.form.writing = false
-		if m.windowType == SearchableSelectableList {
-			m.searchableSelectableList.search.input.Blur()
-			m = m.filterListItems()
-			log.Printf("filtered items in form writing key quit %v", m.server.navState.choices)
-			m.cursor = 0
+	case key.Matches(msg, m.Keys.Quit):
+		m.Form.Writing = false
+		if m.WindowType == SearchableSelectableListWindow {
+			m.SearchableSelectableList.Search.Input.Blur()
+			m = m.FilterListItems()
+			log.Printf("filtered items in form writing key quit %v", m.Server.State.Choices)
+			m.Cursor = 0
 		} else {
-			m.form.inputs[m.form.focusedInput].input.Blur()
+			m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
 		}
-	case key.Matches(msg, m.keys.Enter):
-		m.form.writing = false
-		if m.windowType == SearchableSelectableList {
-			m.searchableSelectableList.search.input.Blur()
-			m = m.filterListItems()
-			log.Printf("filtered items in form writing key enter %v", m.server.navState.choices)
-			m.cursor = 0
+	case key.Matches(msg, m.Keys.Enter):
+		m.Form.Writing = false
+		if m.WindowType == SearchableSelectableListWindow {
+			m.SearchableSelectableList.Search.Input.Blur()
+			m = m.FilterListItems()
+			log.Printf("filtered items in form writing key enter %v", m.Server.State.Choices)
+			m.Cursor = 0
 		} else {
-			m.form.inputs[m.form.focusedInput].input.Blur()
+			m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
 		}
 	default:
 		var newInput textinput.Model
-		if m.windowType == SearchableSelectableList {
-			newInput, cmd = m.searchableSelectableList.search.input.Update(msg)
-			m.searchableSelectableList.search.input = newInput
-			m.searchableSelectableList.search.input.Focus()
-			if m.selectableList == "set target subcollection" {
-				m = m.filterListItems()
-				m.cursor = 0
+		if m.WindowType == SearchableSelectableListWindow {
+			newInput, cmd = m.SearchableSelectableList.Search.Input.Update(msg)
+			m.SearchableSelectableList.Search.Input = newInput
+			m.SearchableSelectableList.Search.Input.Focus()
+			if m.SelectableList == "set target subcollection" {
+				m = m.FilterListItems()
+				m.Cursor = 0
 			}
 		} else {
-			newInput, cmd = m.form.inputs[m.form.focusedInput].input.Update(msg)
-			m.form.inputs[m.form.focusedInput].input = newInput
-			m.form.inputs[m.form.focusedInput].input.Focus()
+			newInput, cmd = m.Form.Inputs[m.Form.FocusedInput].Input.Update(msg)
+			m.Form.Inputs[m.Form.FocusedInput].Input = newInput
+			m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
 		}
 	}
 	return m, cmd
 }
 
 // List selection navigation
-func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
+func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return m.goToMainWindow(msg, cmd)
-	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
-		m = m.handleStandardMovementKey(msg)
-	case key.Matches(msg, m.keys.ToggleShowCollections):
-		m.showCollections = !m.showCollections
-	case key.Matches(msg, m.keys.NewCollection):
-		m.form = getNewCollectionForm()
-		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
-	case key.Matches(msg, m.keys.SetTargetSubCollection):
-		m.form = getTargetSubCollectionForm()
-		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
-	case key.Matches(msg, m.keys.SetTargetCollection):
-		m, cmd = m.setWindowType(msg, cmd, SearchableSelectableList, "search for collection")
-	case key.Matches(msg, m.keys.InsertMode) || key.Matches(msg, m.keys.SearchBuf):
-		m.searchableSelectableList.search.input.Focus()
-		m.form.writing = true
-	case key.Matches(msg, m.keys.ToggleAutoAudition):
-		m.server.updateAutoAudition(!m.server.currentUser.autoAudition)
-	case key.Matches(msg, m.keys.Enter):
-		value := m.searchableSelectableList.search.input.Value()
-		switch m.searchableSelectableList.title {
+	case key.Matches(msg, m.Keys.Quit):
+		return m.GoToMainWindow(msg, cmd)
+	case key.Matches(msg, m.Keys.Up) || key.Matches(msg, m.Keys.Down) || key.Matches(msg, m.Keys.JumpDown) || key.Matches(msg, m.Keys.JumpUp) || key.Matches(msg, m.Keys.Audition) || key.Matches(msg, m.Keys.AuditionRandom) || key.Matches(msg, m.Keys.JumpBottom):
+		m = m.HandleStandardMovementKey(msg)
+	case key.Matches(msg, m.Keys.ToggleShowCollections):
+		m.ShowCollections = !m.ShowCollections
+	case key.Matches(msg, m.Keys.NewCollection):
+		m.Form = GetNewCollectionForm()
+		m, cmd = m.SetWindowType(msg, cmd, FormWindow, "")
+	case key.Matches(msg, m.Keys.SetTargetSubCollection):
+		m.Form = GetTargetSubCollectionForm()
+		m, cmd = m.SetWindowType(msg, cmd, FormWindow, "")
+	case key.Matches(msg, m.Keys.SetTargetCollection):
+		m, cmd = m.SetWindowType(msg, cmd, SearchableSelectableListWindow, "search for collection")
+	case key.Matches(msg, m.Keys.InsertMode) || key.Matches(msg, m.Keys.SearchBuf):
+		m.SearchableSelectableList.Search.Input.Focus()
+		m.Form.Writing = true
+	case key.Matches(msg, m.Keys.ToggleAutoAudition):
+		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
+	case key.Matches(msg, m.Keys.Enter):
+		value := m.SearchableSelectableList.Search.Input.Value()
+		switch m.SearchableSelectableList.Title {
 		case "fuzzy search from root":
 			if value == "" {
 				return m, cmd
 			}
-			m.cursor = 0
-			m.server.fuzzyFind(value, true)
+			m.Cursor = 0
+			m.Server.FuzzyFind(value, true)
 			return m, cmd
 		case "fuzzy search window":
 			if value == "" {
 				return m, cmd
 			}
-			m.cursor = 0
-			m.server.fuzzyFind(value, false)
+			m.Cursor = 0
+			m.Server.FuzzyFind(value, false)
 			return m, cmd
 		case "set target subcollection":
-			if len(m.server.navState.choices) == 0 && len(value) > 0 {
-				m.server.updateTargetSubCollection(value)
+			if len(m.Server.State.Choices) == 0 && len(value) > 0 {
+				m.Server.UpdateTargetSubCollection(value)
 			} else {
-				selected := m.server.navState.choices[m.cursor]
+				selected := m.Server.State.Choices[m.Cursor]
 				log.Printf("selected: %v", selected)
-				if collection, ok := selected.(selectableListItem); ok {
+				if collection, ok := selected.(SelectableListItem); ok {
 					log.Printf("selected collection: %v", collection.Name())
-					m.server.updateTargetSubCollection(collection.Name())
+					m.Server.UpdateTargetSubCollection(collection.Name())
 				} else {
 					log.Fatalf("Invalid list selection item type")
 				}
 			}
-			m, cmd = m.goToMainWindow(msg, cmd)
+			m, cmd = m.GoToMainWindow(msg, cmd)
 		}
 	}
 	return m, cmd
 }
 
 // Form key
-func (m model) handleSearchableListKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) {
-	if m.form.writing {
-		m, cmd = m.handleFormWritingKey(msg, cmd)
+func (m Model) HandleSearchableListKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
+	if m.Form.Writing {
+		m, cmd = m.HandleFormWritingKey(msg, cmd)
 	} else {
-		m, cmd = m.handleSearchableListNavKey(msg, cmd)
+		m, cmd = m.HandleSearchableListNavKey(msg, cmd)
 	}
 	return m, cmd
 }
 
 // Takes a message and updates the model
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.handleWindowResize(msg)
+		m = m.HandleWindowResize(msg)
 	case tea.KeyMsg:
-		switch m.windowType {
+		switch m.WindowType {
 		case FormWindow:
-			m, cmd = m.handleFormKey(msg, cmd)
+			m, cmd = m.HandleFormKey(msg, cmd)
 		case ListSelectionWindow:
-			m, cmd = m.handleListSelectionKey(msg, cmd)
+			m, cmd = m.HandleListSelectionKey(msg, cmd)
 		case DirectoryWalker:
-			m, cmd = m.handleDirectoryKey(msg, cmd)
-			if m.quitting {
+			m, cmd = m.HandleDirectoryKey(msg, cmd)
+			if m.Quitting {
 				return m, tea.Quit
 			}
-		case SearchableSelectableList:
-			m, cmd = m.handleSearchableListKey(msg, cmd)
+		case SearchableSelectableListWindow:
+			m, cmd = m.HandleSearchableListKey(msg, cmd)
 		}
-		m.keyHack.updateLastKey(msg.String())
+		m.KeyHack.UpdateLastKey(msg.String())
 	}
-	return m.setViewportContent(msg, cmd)
+	return m.SetViewportContent(msg, cmd)
 }
 
 //////////////////////// LOCAL SERVER ////////////////////////
 
 // A connection between a tag and a collection
-type collectionTag struct {
-	filePath       string
-	collectionName string
-	subCollection  string
+type CollectionTag struct {
+	FilePath       string
+	CollectionName string
+	SubCollection  string
 }
 
 // A directory entry with associated tags
-type dirEntryWithTags struct {
-	path  string
-	tags  []collectionTag
-	isDir bool
+type TaggedDirentry struct {
+	Path string
+	Tags []CollectionTag
+	Dir  bool
 }
 
-func (d dirEntryWithTags) Id() int {
+func (d TaggedDirentry) Id() int {
 	return 0
 }
 
-func (d dirEntryWithTags) Name() string {
-	return d.path
+func (d TaggedDirentry) Name() string {
+	return d.Path
 }
 
-func (d dirEntryWithTags) Description() string {
-	return d.displayTags()
+func (d TaggedDirentry) Description() string {
+	return d.DisplayTags()
 }
 
-func (d dirEntryWithTags) IsDir() bool {
-	return d.isDir
+func (d TaggedDirentry) IsDir() bool {
+	return d.Dir
 }
 
-func (d dirEntryWithTags) IsFile() bool {
-	return !d.isDir
+func (d TaggedDirentry) IsFile() bool {
+	return !d.Dir
 }
 
 // A string representing the collection tags associated with a directory entry
-func (d dirEntryWithTags) displayTags() string {
+func (d TaggedDirentry) DisplayTags() string {
 	first := true
 	resp := ""
-	for _, tag := range d.tags {
+	for _, tag := range d.Tags {
 		if first {
-			resp = fmt.Sprintf("%s: %s", tag.collectionName, tag.subCollection)
+			resp = fmt.Sprintf("%s: %s", tag.CollectionName, tag.SubCollection)
 			first = false
 		} else {
-			resp = fmt.Sprintf("%s, %s: %s", resp, tag.collectionName, tag.subCollection)
+			resp = fmt.Sprintf("%s, %s: %s", resp, tag.CollectionName, tag.SubCollection)
 		}
 	}
 	return resp
 }
 
-// A user
-type user struct {
-	id                  int
-	name                string
-	autoAudition        bool
-	targetCollection    *collection
-	targetSubCollection string
-	root                string
+// A User
+type User struct {
+	Id                  int
+	Name                string
+	AutoAudition        bool
+	TargetCollection    *Collection
+	TargetSubCollection string
+	Root                string
 }
 
 // Struct holding the app's configuration
-type config struct {
-	data              string
-	root              string
-	dbFileName        string
-	createSqlCommands []byte
+type Config struct {
+	Data              string
+	Root              string
+	DbFileName        string
+	CreateSqlCommands []byte
 }
 
 // Constructor for the Config struct
-func newConfig(data string, root string, dbFileName string) *config {
+func NewConfig(data string, root string, dbFileName string) *Config {
 	log.Printf("data: %v, samples: %v", data, root)
 	sqlCommands, err := os.ReadFile("sql_commands/create_db.sql")
 	if err != nil {
@@ -1140,21 +1136,21 @@ func newConfig(data string, root string, dbFileName string) *config {
 	if !rootExists {
 		log.Fatalf("No root samples directory found at %v", root)
 	}
-	config := config{
-		data:              data,
-		root:              root,
-		dbFileName:        dbFileName,
-		createSqlCommands: sqlCommands,
+	config := Config{
+		Data:              data,
+		Root:              root,
+		DbFileName:        dbFileName,
+		CreateSqlCommands: sqlCommands,
 	}
 	return &config
 }
 
-func (c *config) setRoot(root string) {
+func (c *Config) SetRoot(root string) {
 	root = core.ExpandHomeDir(root)
-	c.root = root
+	c.Root = root
 }
 
-func createDirectories(dir string) {
+func CreateDirectories(dir string) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			panic(err)
@@ -1166,62 +1162,62 @@ func createDirectories(dir string) {
 }
 
 // Handles either creating or checking the existence of the data and samples directories
-func (c *config) createDataDirectory() {
-	createDirectories(c.data)
+func (c *Config) CreateDataDirectory() {
+	CreateDirectories(c.Data)
 }
 
 // Standardized file structure for the database file
-func (c *config) getDbPath() string {
-	if c.dbFileName == "" {
-		c.dbFileName = "excavator"
+func (c *Config) GetDbPath() string {
+	if c.DbFileName == "" {
+		c.DbFileName = "excavator"
 	}
-	if !strings.HasSuffix(c.dbFileName, ".db") {
-		c.dbFileName = c.dbFileName + ".db"
+	if !strings.HasSuffix(c.DbFileName, ".db") {
+		c.DbFileName = c.DbFileName + ".db"
 	}
-	return filepath.Join(c.data, c.dbFileName)
+	return filepath.Join(c.Data, c.DbFileName)
 }
 
-type navState struct {
-	root           string
-	currentDir     string
-	choiceChannel  chan selectableListItem
-	choices        []selectableListItem
-	collectionTags func(path string) []collectionTag
+type State struct {
+	Root           string
+	Dir            string
+	choiceChannel  chan SelectableListItem
+	Choices        []SelectableListItem
+	CollectionTags func(path string) []CollectionTag
 }
 
-func newNavState(root string, currentDir string, collectionTags func(path string) []collectionTag) *navState {
-	choiceChannel := make(chan selectableListItem)
-	navState := navState{
-		root:           root,
-		currentDir:     currentDir,
+func NewNavState(root string, currentDir string, collectionTags func(path string) []CollectionTag) *State {
+	choiceChannel := make(chan SelectableListItem)
+	navState := State{
+		Root:           root,
+		Dir:            currentDir,
 		choiceChannel:  choiceChannel,
-		choices:        make([]selectableListItem, 0),
-		collectionTags: collectionTags,
+		Choices:        make([]SelectableListItem, 0),
+		CollectionTags: collectionTags,
 	}
 	go navState.Run()
 	return &navState
 }
 
-func (n *navState) Run() {
+func (n *State) Run() {
 	for {
 		select {
 		case choice := <-n.choiceChannel:
-			n.choices = append(n.choices, choice)
+			n.Choices = append(n.Choices, choice)
 		}
 	}
 }
 
-func (n *navState) pushChoice(choice selectableListItem) {
+func (n *State) pushChoice(choice SelectableListItem) {
 	n.choiceChannel <- choice
 }
 
 // Grab an index of some audio file within the current directory
-func (n *navState) getRandomAudioFileIndex() int {
-	if len(n.choices) == 0 {
+func (n *State) GetRandomAudioFileIndex() int {
+	if len(n.Choices) == 0 {
 		return -1
 	}
 	possibleIndexes := make([]int, 0)
-	for i, choice := range n.choices {
+	for i, choice := range n.Choices {
 		if !choice.IsDir() {
 			possibleIndexes = append(possibleIndexes, i)
 		}
@@ -1230,19 +1226,19 @@ func (n *navState) getRandomAudioFileIndex() int {
 }
 
 // Populate the choices array with the current directory's contents
-func (n *navState) updateChoices() {
-	if n.currentDir != n.root {
-		n.choices = make([]selectableListItem, 0)
-		dirEntries := n.listDirEntries()
-		n.choices = append(n.choices, dirEntryWithTags{path: "..", tags: make([]collectionTag, 0), isDir: true})
-		n.choices = append(n.choices, dirEntries...)
+func (n *State) UpdateChoices() {
+	if n.Dir != n.Root {
+		n.Choices = make([]SelectableListItem, 0)
+		dirEntries := n.ListDirEntries()
+		n.Choices = append(n.Choices, TaggedDirentry{Path: "..", Tags: make([]CollectionTag, 0), Dir: true})
+		n.Choices = append(n.Choices, dirEntries...)
 	} else {
-		n.choices = n.listDirEntries()
+		n.Choices = n.ListDirEntries()
 	}
 }
 
 // Return only directories and valid audio files
-func (f *navState) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
+func (f *State) FilterDirEntries(entries []os.DirEntry) []os.DirEntry {
 	dirs := make([]os.DirEntry, 0)
 	files := make([]os.DirEntry, 0)
 	for _, entry := range entries {
@@ -1262,56 +1258,56 @@ func (f *navState) filterDirEntries(entries []os.DirEntry) []os.DirEntry {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (f *navState) listDirEntries() []selectableListItem {
-	files, err := os.ReadDir(f.currentDir)
-	log.Printf("current dir: %v", f.currentDir)
+func (f *State) ListDirEntries() []SelectableListItem {
+	files, err := os.ReadDir(f.Dir)
+	log.Printf("current dir: %v", f.Dir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
-	files = f.filterDirEntries(files)
-	var samples []selectableListItem
+	files = f.FilterDirEntries(files)
+	var samples []SelectableListItem
 	for _, file := range files {
-		matchedTags := make([]collectionTag, 0)
+		matchedTags := make([]CollectionTag, 0)
 		isDir := file.IsDir()
 		if !isDir {
-			for _, tag := range f.collectionTags(f.currentDir) {
-				if strings.Contains(tag.filePath, file.Name()) {
+			for _, tag := range f.CollectionTags(f.Dir) {
+				if strings.Contains(tag.FilePath, file.Name()) {
 					matchedTags = append(matchedTags, tag)
 				}
 			}
 		}
-		samples = append(samples, dirEntryWithTags{path: file.Name(), tags: matchedTags, isDir: isDir})
+		samples = append(samples, TaggedDirentry{Path: file.Name(), Tags: matchedTags, Dir: isDir})
 	}
 	return samples
 }
 
 // Get the full path of the current directory
-func (n *navState) getCurrentDirPath() string {
-	return filepath.Join(n.root, n.currentDir)
+func (n *State) GetCurrentDirPath() string {
+	return filepath.Join(n.Root, n.Dir)
 }
 
 // Change the current directory
-func (n *navState) changeDir(dir string) {
+func (n *State) ChangeDir(dir string) {
 	log.Println("Changing to dir: ", dir)
-	n.currentDir = filepath.Join(n.currentDir, dir)
-	log.Println("Current dir: ", n.currentDir)
-	n.updateChoices()
+	n.Dir = filepath.Join(n.Dir, dir)
+	log.Println("Current dir: ", n.Dir)
+	n.UpdateChoices()
 }
 
 // Change the current directory to the root
-func (n *navState) changeToRoot() {
-	n.currentDir = n.root
-	n.updateChoices()
+func (n *State) ChangeToRoot() {
+	n.Dir = n.Root
+	n.UpdateChoices()
 }
 
 // Change the current directory to the parent directory
-func (n *navState) changeToParentDir() {
-	log.Println("Changing to dir: ", filepath.Dir(n.currentDir))
-	n.currentDir = filepath.Dir(n.currentDir)
-	n.updateChoices()
+func (n *State) ChangeToParentDir() {
+	log.Println("Changing to dir: ", filepath.Dir(n.Dir))
+	n.Dir = filepath.Dir(n.Dir)
+	n.UpdateChoices()
 }
 
-func (s *server) getAllDirectories(path string) []string {
+func (s *Server) GetAllDirectories(path string) []string {
 	paths, err := os.ReadDir(path)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
@@ -1325,17 +1321,17 @@ func (s *server) getAllDirectories(path string) []string {
 	return dirs
 }
 
-// The main struct holding the server
-type server struct {
-	db          *sql.DB
-	currentUser user
-	navState    *navState
-	audioPlayer *AudioPlayer
+// The main struct holding the Server
+type Server struct {
+	Db     *sql.DB
+	User   User
+	State  *State
+	Player *Player
 }
 
-func (s *server) handleUserArg(userCliArg *string) user {
-	var user user
-	users := s.getUsers(userCliArg)
+func (s *Server) HandleUserArg(userCliArg *string) User {
+	var user User
+	users := s.GetUsers(userCliArg)
 	if len(*userCliArg) == 0 && len(users) == 0 {
 		log.Fatal("No users found")
 	}
@@ -1344,28 +1340,28 @@ func (s *server) handleUserArg(userCliArg *string) user {
 		return user
 	}
 	if len(*userCliArg) > 0 && len(users) == 0 {
-		id := s.createUser(*userCliArg)
+		id := s.CreateUser(*userCliArg)
 		if id == 0 {
 			log.Fatal("Failed to create user")
 		}
-		user = s.getUser(id)
+		user = s.GetUser(id)
 		return user
 	}
 	if len(*userCliArg) > 0 && len(users) > 0 {
 		for _, u := range users {
-			if u.name == *userCliArg {
+			if u.Name == *userCliArg {
 				return u
 			}
 		}
-		id := s.createUser(*userCliArg)
-		user = s.getUser(id)
+		id := s.CreateUser(*userCliArg)
+		user = s.GetUser(id)
 		return user
 	}
 	log.Fatal("We should never get here")
 	return user
 }
 
-type cliFlags struct {
+type Flags struct {
 	data       string
 	dbFileName string
 	logFile    string
@@ -1374,7 +1370,7 @@ type cliFlags struct {
 	watch      bool
 }
 
-func parseCliFlags() *cliFlags {
+func ParseFlags() *Flags {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
 	var logFile = flag.String("log", "logfile", "Log file name")
@@ -1382,101 +1378,101 @@ func parseCliFlags() *cliFlags {
 	var userArg = flag.String("user", "", "User name to launch with")
 	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
-	return &cliFlags{data: core.ExpandHomeDir(*data), dbFileName: *dbFileName, logFile: *logFile, root: core.ExpandHomeDir(*samples), user: *userArg, watch: *watch}
+	return &Flags{data: core.ExpandHomeDir(*data), dbFileName: *dbFileName, logFile: *logFile, root: core.ExpandHomeDir(*samples), user: *userArg, watch: *watch}
 }
 
 // Part of newServer constructor
-func (s *server) handleRootConstruction(config *config) *server {
-	if s.currentUser.root == "" && config.root == "" {
+func (s *Server) HandleRootConstruction(config *Config) *Server {
+	if s.User.Root == "" && config.Root == "" {
 		log.Fatal("No root found")
-	} else if config.root == "" {
-		config.root = s.currentUser.root
-	} else if s.currentUser.root == "" {
-		s.currentUser.root = config.root // TODO: prompt the user to see if they want to save the root
-		s.updateRootInDb(config.root)
-	} else if s.currentUser.root != config.root {
-		log.Println("launched with temporary root ", config.root)
-		s.currentUser.root = config.root
+	} else if config.Root == "" {
+		config.Root = s.User.Root
+	} else if s.User.Root == "" {
+		s.User.Root = config.Root // TODO: prompt the user to see if they want to save the root
+		s.UpdateRootInDb(config.Root)
+	} else if s.User.Root != config.Root {
+		log.Println("launched with temporary root ", config.Root)
+		s.User.Root = config.Root
 	}
-	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
+	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.User, s.User.TargetCollection.name, s.User.TargetSubCollection)
 	return s
 }
 
 // Construct the server
-func newServer(audioPlayer *AudioPlayer, flags *cliFlags) *server {
-	config := newConfig(flags.data, flags.root, flags.dbFileName)
-	config.createDataDirectory()
-	dbPath := config.getDbPath()
+func NewServer(audioPlayer *Player, flags *Flags) *Server {
+	config := NewConfig(flags.data, flags.root, flags.dbFileName)
+	config.CreateDataDirectory()
+	dbPath := config.GetDbPath()
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		log.Fatalf("failed to create sqlite file %v", err)
 	}
-	if _, err := os.Stat(config.getDbPath()); os.IsNotExist(err) {
-		_, innerErr := db.Exec(string(config.createSqlCommands))
+	if _, err := os.Stat(config.GetDbPath()); os.IsNotExist(err) {
+		_, innerErr := db.Exec(string(config.CreateSqlCommands))
 		if innerErr != nil {
 			log.Fatalf("Failed to execute SQL commands: %v", innerErr)
 		}
 	}
-	s := server{
-		db:          db,
-		audioPlayer: audioPlayer,
+	s := Server{
+		Db:     db,
+		Player: audioPlayer,
 	}
-	s.currentUser = s.handleUserArg(&flags.user)
-	s = *s.handleRootConstruction(config)
-	navState := newNavState(config.root, config.root, s.getCollectionTags)
-	s.navState = navState
-	s.navState.updateChoices()
+	s.User = s.HandleUserArg(&flags.user)
+	s = *s.HandleRootConstruction(config)
+	navState := NewNavState(config.Root, config.Root, s.GetCollectionTags)
+	s.State = navState
+	s.State.UpdateChoices()
 	return &s
 }
 
-func (s *server) setRoot(path string) {
-	s.navState.root = path
-	s.navState.currentDir = path
-	s.navState.updateChoices()
-	s.currentUser.root = path
-	s.updateRootInDb(path)
+func (s *Server) SetRoot(path string) {
+	s.State.Root = path
+	s.State.Dir = path
+	s.State.UpdateChoices()
+	s.User.Root = path
+	s.UpdateRootInDb(path)
 }
 
 // Set the current user's auto audition preference and update in db
-func (s *server) updateAutoAudition(autoAudition bool) {
-	s.currentUser.autoAudition = autoAudition
-	s.updateAutoAuditionInDb(autoAudition)
+func (s *Server) UpdateAutoAudition(autoAudition bool) {
+	s.User.AutoAudition = autoAudition
+	s.UpdateAutoAuditionInDb(autoAudition)
 }
 
-func (s *server) updateChoices() {
-	s.navState.updateChoices()
+func (s *Server) UpdateChoices() {
+	s.State.UpdateChoices()
 }
 
 // Set the current user's target collection and update in db
-func (s *server) updateTargetCollection(collection collection) {
-	s.currentUser.targetCollection = &collection
-	s.updateSelectedCollectionInDb(collection.id)
-	s.updateTargetSubCollection("")
-	s.currentUser.targetSubCollection = ""
+func (s *Server) UpdateTargetCollection(collection Collection) {
+	s.User.TargetCollection = &collection
+	s.UpdateSelectedCollectionInDb(collection.id)
+	s.UpdateTargetSubCollection("")
+	s.User.TargetSubCollection = ""
 }
 
 // Set the current user's target subcollection and update in db
-func (s *server) updateTargetSubCollection(subCollection string) {
+func (s *Server) UpdateTargetSubCollection(subCollection string) {
 	if len(subCollection) > 0 && !strings.HasPrefix(subCollection, "/") {
 		subCollection = "/" + subCollection
 	}
-	s.currentUser.targetSubCollection = subCollection
-	s.updateTargetSubCollectionInDb(subCollection)
+	s.User.TargetSubCollection = subCollection
+	s.UpdateTargetSubCollectionInDb(subCollection)
 }
 
 // Create a tag with the defaults based on the current state
-func (s *server) createQuickTag(filepath string) {
-	s.createCollectionTagInDb(filepath, s.currentUser.targetCollection.id, path.Base(filepath), s.currentUser.targetSubCollection)
-	s.updateChoices()
+func (s *Server) CreateQuickTag(filepath string) {
+	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.id, path.Base(filepath), s.User.TargetSubCollection)
+	s.UpdateChoices()
 }
 
 // Create a tag with all possible args
-func (s *server) createTag(filepath string, name string, subCollection string) {
-	s.createCollectionTagInDb(filepath, s.currentUser.targetCollection.id, name, subCollection)
-	s.updateChoices()
+func (s *Server) CreateTag(filepath string, name string, subCollection string) {
+	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.id, name, subCollection)
+	s.UpdateChoices()
 }
 
-func containsAllSubstrings(s1 string, s2 string) bool {
+func ContainsAllSubstrings(s1 string, s2 string) bool {
 	words := strings.Fields(s2)
 	s1 = strings.ToLower(s1)
 	s2 = strings.ToLower(s2)
@@ -1489,21 +1485,21 @@ func containsAllSubstrings(s1 string, s2 string) bool {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (s *server) fuzzyFind(search string, fromRoot bool) []selectableListItem {
+func (s *Server) FuzzyFind(search string, fromRoot bool) []SelectableListItem {
 	log.Println("in server fuzzy search fn")
 	var dir string
 	var entries []os.DirEntry = make([]os.DirEntry, 0)
 	var files []fs.DirEntry
-	var samples []selectableListItem
+	var samples []SelectableListItem
 	if len(search) == 0 {
-		return make([]selectableListItem, 0)
+		return make([]SelectableListItem, 0)
 	}
 	if fromRoot {
-		dir = s.navState.root
+		dir = s.State.Root
 	} else {
-		dir = s.navState.currentDir
+		dir = s.State.Dir
 	}
-	collectionTags := s.fuzzySearchCollectionTags(search)
+	collectionTags := s.FuzzyFindCollectionTags(search)
 	log.Println("collection tags", collectionTags)
 	log.Println("searching for: ", search)
 	log.Println("dir: ", dir)
@@ -1511,20 +1507,20 @@ func (s *server) fuzzyFind(search string, fromRoot bool) []selectableListItem {
 		if err != nil {
 			return err
 		}
-		if !containsAllSubstrings(path, search) || strings.HasPrefix(path, ".") || strings.HasSuffix(path, ".asd") {
+		if !ContainsAllSubstrings(path, search) || strings.HasPrefix(path, ".") || strings.HasSuffix(path, ".asd") {
 			return nil
 		}
 		if (strings.HasSuffix(path, ".wav") || strings.HasSuffix(path, ".mp3") || strings.HasSuffix(path, ".flac")) && !d.IsDir() {
 			entries = append(entries, d)
 		}
 		files = append(files, d)
-		matchedTags := make([]collectionTag, 0)
+		matchedTags := make([]CollectionTag, 0)
 		for _, tag := range collectionTags {
-			if strings.Contains(tag.filePath, path) {
+			if strings.Contains(tag.FilePath, path) {
 				matchedTags = append(matchedTags, tag)
 			}
 		}
-		s.navState.pushChoice(dirEntryWithTags{path: path, tags: matchedTags, isDir: false})
+		s.State.pushChoice(TaggedDirentry{Path: path, Tags: matchedTags, Dir: false})
 		return nil
 	})
 	if err != nil {
@@ -1537,7 +1533,7 @@ func (s *server) fuzzyFind(search string, fromRoot bool) []selectableListItem {
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
 
 // Get collection tags associated with a directory
-func (s *server) getCollectionTags(dir string) []collectionTag {
+func (s *Server) GetCollectionTags(dir string) []CollectionTag {
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -1545,26 +1541,26 @@ on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
 where t.file_path like ?`
 	dir = dir + "%"
-	rows, err := s.db.Query(statement, dir)
+	rows, err := s.Db.Query(statement, dir)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]collectionTag, 0)
+	tags := make([]CollectionTag, 0)
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
+		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
-func (s *server) fuzzySearchCollectionTags(search string) []collectionTag {
+func (s *Server) FuzzyFindCollectionTags(search string) []CollectionTag {
 	words := strings.Fields(search)
 	if len(words) == 0 {
-		return make([]collectionTag, 0)
+		return make([]CollectionTag, 0)
 	} else if len(words) == 1 {
 		search = "%" + search + "%"
 	} else {
@@ -1584,12 +1580,12 @@ left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
 where t.file_path like ?`
-	rows, err := s.db.Query(statement, search)
+	rows, err := s.Db.Query(statement, search)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]collectionTag, 0)
+	tags := make([]CollectionTag, 0)
 	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
@@ -1597,13 +1593,13 @@ where t.file_path like ?`
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
-		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
+		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
 // Get collection tags associated with a directory
-func (s *server) searchCollectionTags(search string) []collectionTag {
+func (s *Server) SearchCollectionTags(search string) []CollectionTag {
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -1611,12 +1607,12 @@ on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
 where t.file_path like ?`
 	search = "%" + search + "%"
-	rows, err := s.db.Query(statement, search)
+	rows, err := s.Db.Query(statement, search)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]collectionTag, 0)
+	tags := make([]CollectionTag, 0)
 	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
@@ -1624,15 +1620,15 @@ where t.file_path like ?`
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
-		tags = append(tags, collectionTag{filePath: filePath, collectionName: collectionName, subCollection: subCollection})
+		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
-func (s *server) getUser(id int) user {
+func (s *Server) GetUser(id int) User {
 	fmt.Println("getting user ", id)
 	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
-	row := s.db.QueryRow(statement, id)
+	row := s.Db.QueryRow(statement, id)
 	var name string
 	var collectionId *int
 	var collectionName *string
@@ -1643,17 +1639,17 @@ func (s *server) getUser(id int) user {
 	if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 		log.Fatalf("Failed to scan row: %v", err)
 	}
-	var selectedCollection *collection
+	var selectedCollection *Collection
 	if collectionId != nil && collectionName != nil && collectionDescription != nil {
-		selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+		selectedCollection = &Collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
 	} else {
-		selectedCollection = &collection{id: 0, name: "", description: ""}
+		selectedCollection = &Collection{id: 0, name: "", description: ""}
 	}
-	return user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root}
+	return User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root}
 }
 
 // Get all users
-func (s *server) getUsers(name *string) []user {
+func (s *Server) GetUsers(name *string) []User {
 	var whereClause string
 	var rows *sql.Rows
 	var err error
@@ -1663,15 +1659,15 @@ func (s *server) getUsers(name *string) []user {
 	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
 	if whereClause != "" {
 		statement = statement + " " + whereClause
-		rows, err = s.db.Query(statement, name)
+		rows, err = s.Db.Query(statement, name)
 	} else {
-		rows, err = s.db.Query(statement)
+		rows, err = s.Db.Query(statement)
 	}
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
 	}
 	defer rows.Close()
-	users := make([]user, 0)
+	users := make([]User, 0)
 	for rows.Next() {
 		var id int
 		var name string
@@ -1684,20 +1680,20 @@ func (s *server) getUsers(name *string) []user {
 		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		var selectedCollection *collection
+		var selectedCollection *Collection
 		if collectionId != nil && collectionName != nil && collectionDescription != nil {
-			selectedCollection = &collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+			selectedCollection = &Collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
 		} else {
-			selectedCollection = &collection{id: 0, name: "", description: ""}
+			selectedCollection = &Collection{id: 0, name: "", description: ""}
 		}
-		users = append(users, user{id: id, name: name, autoAudition: autoAudition, targetCollection: selectedCollection, targetSubCollection: selectedSubCollection, root: root})
+		users = append(users, User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root})
 	}
 	return users
 }
 
 // Create a user in the database
-func (s *server) createUser(name string) int {
-	res, err := s.db.Exec("insert or ignore into User (name) values (?)", name)
+func (s *Server) CreateUser(name string) int {
+	res, err := s.Db.Exec("insert or ignore into User (name) values (?)", name)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in createUser: %v", err)
 	}
@@ -1709,42 +1705,42 @@ func (s *server) createUser(name string) int {
 }
 
 // Update the current user's selected collection in the database
-func (s *server) updateSelectedCollectionInDb(collection int) {
-	_, err := s.db.Exec("update User set selected_collection = ? where id = ?", collection, s.currentUser.id)
+func (s *Server) UpdateSelectedCollectionInDb(collection int) {
+	_, err := s.Db.Exec("update User set selected_collection = ? where id = ?", collection, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSelectedCollectionInDb: %v", err)
 	}
 }
 
 // Update the current user's auto audition preference in the database
-func (s *server) updateRootInDb(path string) {
-	_, err := s.db.Exec("update User set root = ? where id = ?", path, s.currentUser.id)
+func (s *Server) UpdateRootInDb(path string) {
+	_, err := s.Db.Exec("update User set root = ? where id = ?", path, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in update root in db: %v", err)
 	}
 }
 
 // Update the current user's auto audition preference in the database
-func (s *server) updateAutoAuditionInDb(autoAudition bool) {
-	_, err := s.db.Exec("update User set auto_audition = ? where id = ?", autoAudition, s.currentUser.id)
+func (s *Server) UpdateAutoAuditionInDb(autoAudition bool) {
+	_, err := s.Db.Exec("update User set auto_audition = ? where id = ?", autoAudition, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateAutoAuditionInDb: %v", err)
 	}
 }
 
 // Update the current user's name in the database
-func (s *server) updateUsername(id int, name string) {
-	_, err := s.db.Exec("update User set name = ? where id = ?", name, id)
+func (s *Server) UpdateUsername(id int, name string) {
+	_, err := s.Db.Exec("update User set name = ? where id = ?", name, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateUsername: %v", err)
 	}
 }
 
 // Create a collection in the database
-func (s *server) createCollection(name string, description string) int {
+func (s *Server) CreateCollection(name string, description string) int {
 	var err error
 	var res sql.Result
-	res, err = s.db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.currentUser.id, description)
+	res, err = s.Db.Exec("insert into Collection (name, user_id, description) values (?, ?, ?)", name, s.User.Id, description)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in createCollection: %v", err)
 	}
@@ -1755,47 +1751,51 @@ func (s *server) createCollection(name string, description string) int {
 	return int(id)
 }
 
-// A collection
-type collection struct {
+// A Collection
+type Collection struct {
 	id          int
 	name        string
 	description string
 }
 
+func NewCollection(id int, name string, description string) Collection {
+	return Collection{id: id, name: name, description: description}
+}
+
 // Requirement for a listSelectionItem
-func (c collection) Id() int {
+func (c Collection) Id() int {
 	return c.id
 }
 
 // Requirement for a listSelectionItem
-func (c collection) Name() string {
+func (c Collection) Name() string {
 	return c.name
 }
 
 // Requirement for a listSelectionItem
-func (c collection) Description() string {
+func (c Collection) Description() string {
 	return c.description
 }
 
 // Requirement for a listSelectionItem
-func (c collection) IsDir() bool {
+func (c Collection) IsDir() bool {
 	return false
 }
 
 // Requirement for a listSelectionItem
-func (c collection) IsFile() bool {
+func (c Collection) IsFile() bool {
 	return false
 }
 
 // Get all collections for the current user
-func (s *server) getCollections() []collection {
+func (s *Server) GetCollections() []Collection {
 	statement := `select id, name, description from Collection where user_id = ?`
-	rows, err := s.db.Query(statement, s.currentUser.id)
+	rows, err := s.Db.Query(statement, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollections: %v", err)
 	}
 	defer rows.Close()
-	collections := make([]collection, 0)
+	collections := make([]Collection, 0)
 	for rows.Next() {
 		var id int
 		var name string
@@ -1803,34 +1803,34 @@ func (s *server) getCollections() []collection {
 		if err := rows.Scan(&id, &name, &description); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		collection := collection{id: id, name: name, description: description}
+		collection := Collection{id: id, name: name, description: description}
 		collections = append(collections, collection)
 	}
 	return collections
 }
 
 // Update a collection's name in the database
-func (s *server) updateCollectionNameInDb(id int, name string) {
-	_, err := s.db.Exec("update Collection set name = ? where id = ?", name, id)
+func (s *Server) UpdateCollectionNameInDb(id int, name string) {
+	_, err := s.Db.Exec("update Collection set name = ? where id = ?", name, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateCollectionNameInDb: %v", err)
 	}
 }
 
 // Requirement for a listSelectionItem
-func (s *server) updateCollectionDescriptionInDb(id int, description string) {
-	_, err := s.db.Exec("update Collection set description = ? where id = ?", description, id)
+func (s *Server) UpdateCollectionDescriptionInDb(id int, description string) {
+	_, err := s.Db.Exec("update Collection set description = ? where id = ?", description, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateCollectionDescriptionInDb: %v", err)
 	}
 }
 
 // Create a tag in the database
-func (s *server) createTagInDb(filePath string) int {
-	if !strings.Contains(filePath, s.navState.root) {
-		filePath = filepath.Join(s.navState.currentDir, filePath)
+func (s *Server) CreateTagInDb(filePath string) int {
+	if !strings.Contains(filePath, s.State.Root) {
+		filePath = filepath.Join(s.State.Dir, filePath)
 	}
-	res, err := s.db.Exec("insert or ignore into Tag (file_path, user_id) values (?, ?)", filePath, s.currentUser.id)
+	res, err := s.Db.Exec("insert or ignore into Tag (file_path, user_id) values (?, ?)", filePath, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in createTagInDb: %v", err)
 	}
@@ -1842,9 +1842,9 @@ func (s *server) createTagInDb(filePath string) int {
 }
 
 // Add a tag to a collection in the database
-func (s *server) addTagToCollectionInDb(tagId int, collectionId int, name string, subCollection string) {
+func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string, subCollection string) {
 	log.Printf("Tag id: %d, collectionId: %d, name: %s, subCollection: %s", tagId, collectionId, name, subCollection)
-	res, err := s.db.Exec("insert or ignore into CollectionTag (tag_id, collection_id, name, sub_collection) values (?, ?, ?, ?)", tagId, collectionId, name, subCollection)
+	res, err := s.Db.Exec("insert or ignore into CollectionTag (tag_id, collection_id, name, sub_collection) values (?, ?, ?, ?)", tagId, collectionId, name, subCollection)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in addTagToCollectionInDb: %v", err)
 	}
@@ -1856,14 +1856,14 @@ func (s *server) addTagToCollectionInDb(tagId int, collectionId int, name string
 }
 
 // Add a CollectionTag to the database, handling creation of core tag if needed
-func (s *server) createCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
-	tagId := s.createTagInDb(filePath)
+func (s *Server) CreateCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
+	tagId := s.CreateTagInDb(filePath)
 	log.Printf("Tag id: %d", tagId)
-	s.addTagToCollectionInDb(tagId, collectionId, name, subCollection)
+	s.AddTagToCollectionInDb(tagId, collectionId, name, subCollection)
 }
 
-func (s *server) updateTargetSubCollectionInDb(subCollection string) {
-	_, err := s.db.Exec("update User set selected_subcollection = ? where id = ?", subCollection, s.currentUser.id)
+func (s *Server) UpdateTargetSubCollectionInDb(subCollection string) {
+	_, err := s.Db.Exec("update User set selected_subcollection = ? where id = ?", subCollection, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSubCollectionInDb: %v", err)
 	}
@@ -1893,9 +1893,9 @@ func (s SubCollection) IsFile() bool {
 	return false
 }
 
-func (s *server) getCollectionSubcollections() []SubCollection {
+func (s *Server) GetCollectionSubcollections() []SubCollection {
 	statement := `select distinct sub_collection from CollectionTag where collection_id = ? order by sub_collection asc`
-	rows, err := s.db.Query(statement, s.currentUser.targetCollection.id)
+	rows, err := s.Db.Query(statement, s.User.TargetCollection.id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollectionSubcollections: %v", err)
 	}
@@ -1911,13 +1911,13 @@ func (s *server) getCollectionSubcollections() []SubCollection {
 	return subCollections
 }
 
-func (s *server) searchCollectionSubcollections(search string) []SubCollection {
+func (s *Server) SearchCollectionSubcollections(search string) []SubCollection {
 	fuzzySearch := "%" + search + "%"
 	statement := `SELECT DISTINCT sub_collection
                   FROM CollectionTag
                   WHERE collection_id = ? AND sub_collection LIKE ?
                   ORDER BY sub_collection ASC`
-	rows, err := s.db.Query(statement, s.currentUser.targetCollection.id, fuzzySearch)
+	rows, err := s.Db.Query(statement, s.User.TargetCollection.id, fuzzySearch)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in searchCollectionSubcollections: %v", err)
 	}
@@ -1938,22 +1938,22 @@ func (s *server) searchCollectionSubcollections(search string) []SubCollection {
 // ////////////////////// AUDIO HANDLING ////////////////////////
 
 // Audio file type enum
-type audioFileType int
+type AudioFile int
 
 // Audio file type enum values
 const (
-	MP3 audioFileType = iota
+	MP3 AudioFile = iota
 	WAV
 	FLAC
 )
 
 // String representation of an audio file type
-func (a *audioFileType) String() string {
+func (a *AudioFile) String() string {
 	return [...]string{"mp3", "wav", "flac"}[*a]
 }
 
 // Construct an audio file type from a string
-func (a *audioFileType) fromExtension(s string) {
+func (a *AudioFile) FromExtension(s string) {
 	switch s {
 	case ".mp3":
 		*a = MP3
@@ -1967,29 +1967,29 @@ func (a *audioFileType) fromExtension(s string) {
 }
 
 // Audio player struct
-type AudioPlayer struct {
-	format          beep.Format
-	currentStreamer beep.StreamSeekCloser
-	commands        chan string
-	playing         bool
-	nextCommand     *string
+type Player struct {
+	Format      beep.Format
+	Streamer    beep.StreamSeekCloser
+	Commands    chan string
+	Playing     bool
+	NextCommand *string
 }
 
 // Push a play command to the audio player's commands channel
-func (a *AudioPlayer) pushPlayCommand(path string) {
+func (a *Player) pushPlayCommand(path string) {
 	log.Println("Pushing play command", path)
-	a.nextCommand = &path
-	a.commands <- path
+	a.NextCommand = &path
+	a.Commands <- path
 }
 
 // Construct the audio player
-func NewAudioPlayer() *AudioPlayer {
+func NewAudioPlayer() *Player {
 	sampleRate := beep.SampleRate(48000)
 	format := beep.Format{SampleRate: sampleRate, NumChannels: 2, Precision: 4}
-	player := AudioPlayer{
-		format:   format,
-		playing:  false,
-		commands: make(chan string),
+	player := Player{
+		Format:   format,
+		Playing:  false,
+		Commands: make(chan string),
 	}
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
 	go func() {
@@ -1999,17 +1999,17 @@ func NewAudioPlayer() *AudioPlayer {
 }
 
 // Close the audio player
-func (a *AudioPlayer) Close() {
+func (a *Player) Close() {
 	speaker.Lock()
-	if a.currentStreamer != nil {
-		a.currentStreamer.Close()
+	if a.Streamer != nil {
+		a.Streamer.Close()
 	}
 	speaker.Unlock()
 	speaker.Close()
 }
 
 // Get a streamer which will buffer playback of one file
-func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
+func (a *Player) GetStreamer(path string, f *os.File) (beep.StreamSeekCloser, beep.Format, error) {
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
 	var err error
@@ -2029,37 +2029,37 @@ func (a *AudioPlayer) GetStreamer(path string, f *os.File) (beep.StreamSeekClose
 }
 
 // Close the current streamer
-func (a *AudioPlayer) CloseStreamer() {
-	if a.currentStreamer != nil {
-		a.currentStreamer.Close()
+func (a *Player) CloseStreamer() {
+	if a.Streamer != nil {
+		a.Streamer.Close()
 	}
-	a.currentStreamer = nil
+	a.Streamer = nil
 }
 
 // Handle a play command arriving in the audio player's commands channel
-func (a *AudioPlayer) handlePlayCommand(path string) {
+func (a *Player) handlePlayCommand(path string) {
 	log.Println("Handling play command", path)
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal("error opening file ", err)
 	}
 	defer f.Close()
-	a.playing = true
+	a.Playing = true
 	streamer, format, err := a.GetStreamer(path, f)
 	if err != nil {
 		log.Printf("Failed to get streamer: %v", err)
 		return
 	}
 	log.Printf("Playing file: \n--> path %s\n--> format%v", path, format)
-	a.currentStreamer = streamer
+	a.Streamer = streamer
 	defer a.CloseStreamer()
-	resampled := beep.Resample(4, format.SampleRate, a.format.SampleRate, streamer)
+	resampled := beep.Resample(4, format.SampleRate, a.Format.SampleRate, streamer)
 	done := make(chan bool)
 	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
-		a.playing = false
+		a.Playing = false
 		log.Println("Finished playing audio")
-		if a.nextCommand != nil && *a.nextCommand == path {
-			a.nextCommand = nil
+		if a.NextCommand != nil && *a.NextCommand == path {
+			a.NextCommand = nil
 		}
 		done <- true
 	})))
@@ -2067,12 +2067,12 @@ func (a *AudioPlayer) handlePlayCommand(path string) {
 }
 
 // Run the audio player, feeding it paths as play commands
-func (a *AudioPlayer) Run() {
+func (a *Player) Run() {
 	for {
 		select {
-		case path := <-a.commands:
+		case path := <-a.Commands:
 			log.Println("In Run, received play command", path)
-			if a.nextCommand != nil && *a.nextCommand != path {
+			if a.NextCommand != nil && *a.NextCommand != path {
 				continue
 			}
 			a.handlePlayCommand(path)
@@ -2081,8 +2081,8 @@ func (a *AudioPlayer) Run() {
 }
 
 // Play one audio file. If another file is already playing, close the current streamer and play the new file.
-func (a *AudioPlayer) PlayAudioFile(path string) {
-	if a.playing {
+func (a *Player) PlayAudioFile(path string) {
+	if a.Playing {
 		// Close current streamer with any necessary cleanup
 		a.CloseStreamer()
 	}
@@ -2091,13 +2091,13 @@ func (a *AudioPlayer) PlayAudioFile(path string) {
 
 // ////////////////////// APP ////////////////////////
 type App struct {
-	server         *server
-	bubbleTeaModel model
+	server         *Server
+	bubbleTeaModel Model
 	logFile        *os.File
 }
 
 // Construct the app
-func NewApp(cliFlags *cliFlags) App {
+func NewApp(cliFlags *Flags) App {
 	logFilePath := filepath.Join(cliFlags.data, cliFlags.logFile)
 	f, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -2105,16 +2105,16 @@ func NewApp(cliFlags *cliFlags) App {
 	}
 	log.SetOutput(f)
 	audioPlayer := NewAudioPlayer()
-	server := newServer(audioPlayer, cliFlags)
+	server := NewServer(audioPlayer, cliFlags)
 	return App{
 		server:         server,
-		bubbleTeaModel: excavatorModel(server),
+		bubbleTeaModel: ExcavatorModel(server),
 		logFile:        f,
 	}
 }
 
 // watches the logfile
-func watch(filePath string, n int) error {
+func Watch(filePath string, n int) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -2151,16 +2151,16 @@ func watch(filePath string, n int) error {
 
 // chris_brown_run_it.ogg
 func main() {
-	cliFlags := parseCliFlags()
-	createDirectories(cliFlags.data)
+	cliFlags := ParseFlags()
+	CreateDirectories(cliFlags.data)
 	logFilePath := filepath.Join(cliFlags.data, cliFlags.logFile)
 	if cliFlags.watch {
-		watch(logFilePath, 10)
+		Watch(logFilePath, 10)
 	} else {
 		app := NewApp(cliFlags)
 		defer app.logFile.Close()
-		defer app.server.audioPlayer.Close()
-		defer app.server.db.Close()
+		defer app.server.Player.Close()
+		defer app.server.Db.Close()
 		p := tea.NewProgram(
 			app.bubbleTeaModel,
 			tea.WithAltScreen(),
