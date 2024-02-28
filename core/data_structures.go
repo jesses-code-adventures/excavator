@@ -207,7 +207,7 @@ type Config struct {
 // Constructor for the Config struct
 func NewConfig(data string, root string, dbFileName string) *Config {
 	log.Printf("data: %v, samples: %v", data, root)
-	sqlCommands, err := os.ReadFile("sql_commands/create_db.sql")
+	sqlCommands, err := os.ReadFile("sql/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
