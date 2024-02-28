@@ -36,180 +36,67 @@ import (
 // All styles to be used throughout the ui
 var (
 	// colours
-	green = lipgloss.Color("#25A065")
-	pink  = lipgloss.Color("#E441B5")
-	white = lipgloss.Color("#FFFDF5")
+	Green = lipgloss.Color("#25A065")
+	Pink  = lipgloss.Color("#E441B5")
+	White = lipgloss.Color("#FFFDF5")
 	// App
-	appStyle = lipgloss.NewStyle().
+	AppStyle = lipgloss.NewStyle().
 			Padding(1, 1)
-	titleStyle = lipgloss.NewStyle().
-			Foreground(white).
-			Background(green).
+	TitleStyle = lipgloss.NewStyle().
+			Foreground(White).
+			Background(Green).
 			Padding(1, 1).
 			Height(3)
-	helpKeyStyle = lipgloss.NewStyle().
+	HelpKeyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{
 			Light: "#909090",
 			Dark:  "#626262",
 		})
-	helpValueStyle = lipgloss.NewStyle().
+	HelpValueStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{
 			Light: "#B2B2B2",
 			Dark:  "#4A4A4A",
 		})
 	// Directory Walker
-	viewportStyle = lipgloss.NewStyle()
-	selectedStyle = lipgloss.NewStyle().
+	ViewportStyle = lipgloss.NewStyle()
+	SelectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder()).
-			Foreground(pink)
-	unselectedStyle = lipgloss.NewStyle().
+			Foreground(Pink)
+	UnselectedStyle = lipgloss.NewStyle().
 			Border(lipgloss.HiddenBorder())
 		// Form
-	formStyle = lipgloss.NewStyle().
+	FormStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Border(lipgloss.HiddenBorder()).
 			Margin(0, 0, 0)
-	unfocusedInput = lipgloss.NewStyle().
+	UnfocusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Background(lipgloss.Color("236")).
 			Width(100).
 			Margin(1, 1).
 			Border(lipgloss.HiddenBorder())
-	focusedInput = lipgloss.NewStyle().
+	FocusedInput = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Background(lipgloss.Color("236")).
 			Width(100).
 			Margin(1, 1)
 		// Searchable list
-	searchableListItemsStyle = lipgloss.NewStyle().
+	SearchableListItemsStyle = lipgloss.NewStyle().
 					Border(lipgloss.HiddenBorder())
-	searchInputBoxStyle = lipgloss.NewStyle().
+	SearchInputBoxStyle = lipgloss.NewStyle().
 				Border(lipgloss.HiddenBorder()).
 				AlignVertical(lipgloss.Bottom).
 				AlignHorizontal(lipgloss.Left)
-	searchableSelectableListStyle = lipgloss.NewStyle().
+	SearchableSelectableListStyle = lipgloss.NewStyle().
 					Border(lipgloss.HiddenBorder())
 )
 
-// A singular form input control
-type FormInput struct {
-	Name  string
-	Input textinput.Model
-}
-
-// Constructor for a form input
-func NewFormInput(name string) FormInput {
-	return FormInput{
-		Name:  name,
-		Input: textinput.New(),
-	}
-}
-
-// A generic Form
-type Form struct {
-	Title        string
-	Inputs       []FormInput
-	Writing      bool
-	FocusedInput int
-}
-
-// A form constructor
-func NewForm(title string, inputs []FormInput) Form {
-	return Form{
-		Title:        title,
-		Inputs:       inputs,
-		Writing:      false,
-		FocusedInput: 0,
-	}
-}
-
-//// Form implementations ////
-
-// Get the inputs for the new collection form
-func GetNewCollectionInputs() []FormInput {
-	return []FormInput{
-		NewFormInput("name"),
-		NewFormInput("description"),
-	}
-}
-
-// Get the new collection form
-func GetNewCollectionForm() Form {
-	return NewForm("create collection", GetNewCollectionInputs())
-}
-
-// Get the inputs for the new collection form
-func GetSearchInput() []FormInput {
-	return []FormInput{
-		NewFormInput("search"),
-	}
-}
-
-// Get the new collection form
-func GetTargetSubCollectionForm() Form {
-	return NewForm("set target subcollection", GetSearchInput())
-}
-
-// Get the new collection form
-func GetFuzzySearchRootForm() Form {
-	return NewForm("fuzzy search from root", GetSearchInput())
-}
-
-// Get the inputs for the new collection form
-func GetCreateCollectionTagInputs(defaultName string, defaultSubCollection string) []FormInput {
-	name := NewFormInput("name")
-	name.Input.SetValue(defaultName)
-	subcollection := NewFormInput("subcollection")
-	subcollection.Input.SetValue(defaultSubCollection)
-	return []FormInput{
-		name,
-		subcollection,
-	}
-}
-
-// Get the new collection form
-func GetCreateTagForm(defaultName string, defaultSubCollection string) Form {
-	return NewForm("create tag", GetCreateCollectionTagInputs(defaultName, defaultSubCollection))
-}
-
-/// List selection ///
-
-// Interface for list selection items so the list can easily be reused
-type SelectableListItem interface {
-	Id() int
-	Name() string
-	Description() string
-	IsDir() bool
-	IsFile() bool
-}
-
-// A list where a single item can be selected
-type SelectableList struct {
-	Title string
-}
-
-// A constructor for a selectable list
-type SearchableSelectableList struct {
-	Title  string
-	Search FormInput
-}
-
-func NewSearchableList(title string) SearchableSelectableList {
-	return SearchableSelectableList{
-		Title: title,
-		Search: FormInput{
-			Name:  "search",
-			Input: textinput.New(),
-		},
-	}
-}
-
 func (m Model) FilterListItems() Model {
-	var resp []SelectableListItem
+	var resp []core.SelectableListItem
 	switch m.SearchableSelectableList.Title {
 	case "set target subcollection":
 		r := m.Server.SearchCollectionSubcollections(m.SearchableSelectableList.Search.Input.Value())
-		newArray := make([]SelectableListItem, 0)
+		newArray := make([]core.SelectableListItem, 0)
 		for _, item := range r {
 			newArray = append(newArray, item)
 		}
@@ -240,9 +127,9 @@ type Model struct {
 	Viewport                 viewport.Model
 	Help                     help.Model
 	WindowType               core.WindowType
-	Form                     Form
+	Form                     core.Form
 	SelectableList           string
-	SearchableSelectableList SearchableSelectableList
+	SearchableSelectableList core.SearchableSelectableList
 }
 
 // Constructor for the app's model
@@ -260,7 +147,7 @@ func ExcavatorModel(server *Server) Model {
 
 // Get the header of the viewport
 func (m Model) HeaderView() string {
-	title := titleStyle.Render("Excavator - Samples")
+	title := TitleStyle.Render("Excavator - Samples")
 	line := strings.Repeat("─", max(0, m.Viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
@@ -280,8 +167,8 @@ func NewStatusDisplayItem(key string, value string) StatusDisplayItem {
 	return StatusDisplayItem{
 		key:        key,
 		value:      value,
-		keyStyle:   helpKeyStyle,
-		valueStyle: helpValueStyle,
+		keyStyle:   HelpKeyStyle,
+		valueStyle: HelpValueStyle,
 	}
 }
 
@@ -301,7 +188,7 @@ func (m Model) GetStatusDisplay() string {
 	for i, item := range items {
 		msg += item.View()
 		if i != len(items)-1 {
-			msg = msg + helpValueStyle.Render(", ")
+			msg = msg + HelpValueStyle.Render(", ")
 		}
 	}
 	padding := (termWidth - len(msgRaw)) / 2
@@ -326,7 +213,7 @@ func (m Model) FooterView() string {
 	centeredHelpText := paddedHelpStyle.Render(helpText)
 	var searchInput string
 	if m.WindowType == core.SearchableSelectableListWindow {
-		searchInput = searchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
+		searchInput = SearchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
 		return searchInput + "\n" + m.GetStatusDisplay() + "\n" + centeredHelpText
 	}
 	return m.GetStatusDisplay() + "\n" + centeredHelpText
@@ -338,9 +225,9 @@ func (m Model) FormView() string {
 	log.Println("got form ", m.Form)
 	for i, input := range m.Form.Inputs {
 		if m.Form.FocusedInput == i {
-			s += focusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
+			s += FocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
 		} else {
-			s += unfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
+			s += UnfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
 		}
 	}
 	return s
@@ -361,12 +248,12 @@ func (m Model) DirectoryView() string {
 			newLine = newLine[:m.Viewport.Width-2]
 		}
 		if m.Cursor == i {
-			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
+			newLine = SelectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 		} else {
 			if m.ShowCollections {
-				newLine = unselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
+				newLine = UnselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 			} else {
-				newLine = unselectedStyle.Render(newLine)
+				newLine = UnselectedStyle.Render(newLine)
 			}
 		}
 		s += newLine
@@ -444,7 +331,7 @@ func (m Model) View() string {
 	if m.Quitting {
 		return ""
 	}
-	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.HeaderView(), viewportStyle.Render(m.Viewport.View()), m.FooterView()))
+	return AppStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.HeaderView(), ViewportStyle.Render(m.Viewport.View()), m.FooterView()))
 }
 
 // Necessary for bubbletea model interface
@@ -455,9 +342,9 @@ func (m Model) Init() tea.Cmd {
 // ////////////////////// UI UPDATING ////////////////////////
 
 func (m Model) ClearModel() Model {
-	m.Form = Form{}
-	m.Server.State.Choices = make([]SelectableListItem, 0)
-	m.SearchableSelectableList = SearchableSelectableList{}
+	m.Form = core.Form{}
+	m.Server.State.Choices = make([]core.SelectableListItem, 0)
+	m.SearchableSelectableList = core.SearchableSelectableList{}
 	m.Cursor = 0
 	return m
 }
@@ -498,7 +385,7 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, title string) (Model, 
 	default:
 		log.Fatalf("Invalid searchable selectable list title")
 	}
-	m.SearchableSelectableList = NewSearchableList(title)
+	m.SearchableSelectableList = core.NewSearchableList(title)
 	return m, cmd
 }
 
@@ -506,9 +393,9 @@ func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, title string) (Model, tea.Cm
 	switch title {
 	case "new collection":
 		m = m.ClearModel()
-		m.Form = GetNewCollectionForm()
+		m.Form = core.GetNewCollectionForm()
 	case "create tag":
-		m.Form = GetCreateTagForm(path.Base(m.Server.State.Choices[m.Cursor].Name()), m.Server.User.TargetSubCollection)
+		m.Form = core.GetCreateTagForm(path.Base(m.Server.State.Choices[m.Cursor].Name()), m.Server.User.TargetSubCollection)
 	}
 	return m, cmd
 }
@@ -680,7 +567,7 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 	case key.Matches(msg, m.Keys.ToggleShowCollections):
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.NewCollection):
-		m.Form = GetNewCollectionForm()
+		m.Form = core.GetNewCollectionForm()
 		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
@@ -815,10 +702,10 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 	case key.Matches(msg, m.Keys.ToggleShowCollections):
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.NewCollection):
-		m.Form = GetNewCollectionForm()
+		m.Form = core.GetNewCollectionForm()
 		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
-		m.Form = GetTargetSubCollectionForm()
+		m.Form = core.GetTargetSubCollectionForm()
 		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
@@ -850,7 +737,7 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 			} else {
 				selected := m.Server.State.Choices[m.Cursor]
 				log.Printf("selected: %v", selected)
-				if collection, ok := selected.(SelectableListItem); ok {
+				if collection, ok := selected.(core.SelectableListItem); ok {
 					log.Printf("selected collection: %v", collection.Name())
 					m.Server.UpdateTargetSubCollection(collection.Name())
 				} else {
@@ -1025,18 +912,18 @@ func (c *Config) GetDbPath() string {
 type State struct {
 	Root           string
 	Dir            string
-	choiceChannel  chan SelectableListItem
-	Choices        []SelectableListItem
+	choiceChannel  chan core.SelectableListItem
+	Choices        []core.SelectableListItem
 	CollectionTags func(path string) []CollectionTag
 }
 
 func NewNavState(root string, currentDir string, collectionTags func(path string) []CollectionTag) *State {
-	choiceChannel := make(chan SelectableListItem)
+	choiceChannel := make(chan core.SelectableListItem)
 	navState := State{
 		Root:           root,
 		Dir:            currentDir,
 		choiceChannel:  choiceChannel,
-		Choices:        make([]SelectableListItem, 0),
+		Choices:        make([]core.SelectableListItem, 0),
 		CollectionTags: collectionTags,
 	}
 	go navState.Run()
@@ -1052,7 +939,7 @@ func (n *State) Run() {
 	}
 }
 
-func (n *State) pushChoice(choice SelectableListItem) {
+func (n *State) pushChoice(choice core.SelectableListItem) {
 	n.choiceChannel <- choice
 }
 
@@ -1073,7 +960,7 @@ func (n *State) GetRandomAudioFileIndex() int {
 // Populate the choices array with the current directory's contents
 func (n *State) UpdateChoices() {
 	if n.Dir != n.Root {
-		n.Choices = make([]SelectableListItem, 0)
+		n.Choices = make([]core.SelectableListItem, 0)
 		dirEntries := n.ListDirEntries()
 		n.Choices = append(n.Choices, TaggedDirentry{Path: "..", Tags: make([]CollectionTag, 0), Dir: true})
 		n.Choices = append(n.Choices, dirEntries...)
@@ -1103,14 +990,14 @@ func (f *State) FilterDirEntries(entries []os.DirEntry) []os.DirEntry {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (f *State) ListDirEntries() []SelectableListItem {
+func (f *State) ListDirEntries() []core.SelectableListItem {
 	files, err := os.ReadDir(f.Dir)
 	log.Printf("current dir: %v", f.Dir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
 	files = f.FilterDirEntries(files)
-	var samples []SelectableListItem
+	var samples []core.SelectableListItem
 	for _, file := range files {
 		matchedTags := make([]CollectionTag, 0)
 		isDir := file.IsDir()
@@ -1330,14 +1217,14 @@ func ContainsAllSubstrings(s1 string, s2 string) bool {
 }
 
 // Standard function for getting the necessary files from a dir with their associated tags
-func (s *Server) FuzzyFind(search string, fromRoot bool) []SelectableListItem {
+func (s *Server) FuzzyFind(search string, fromRoot bool) []core.SelectableListItem {
 	log.Println("in server fuzzy search fn")
 	var dir string
 	var entries []os.DirEntry = make([]os.DirEntry, 0)
 	var files []fs.DirEntry
-	var samples []SelectableListItem
+	var samples []core.SelectableListItem
 	if len(search) == 0 {
-		return make([]SelectableListItem, 0)
+		return make([]core.SelectableListItem, 0)
 	}
 	if fromRoot {
 		dir = s.State.Root
