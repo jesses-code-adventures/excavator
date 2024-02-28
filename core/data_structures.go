@@ -1,6 +1,12 @@
 package core
 
 import (
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
@@ -129,4 +135,162 @@ func NewSearchableList(title string) SearchableSelectableList {
 			Input: textinput.New(),
 		},
 	}
+}
+
+// A connection between a tag and a collection
+type CollectionTag struct {
+	FilePath       string
+	CollectionName string
+	SubCollection  string
+}
+
+// A directory entry with associated tags
+type TaggedDirentry struct {
+	Path string
+	Tags []CollectionTag
+	Dir  bool
+}
+
+func (d TaggedDirentry) Id() int {
+	return 0
+}
+
+func (d TaggedDirentry) Name() string {
+	return d.Path
+}
+
+func (d TaggedDirentry) Description() string {
+	return d.DisplayTags()
+}
+
+func (d TaggedDirentry) IsDir() bool {
+	return d.Dir
+}
+
+func (d TaggedDirentry) IsFile() bool {
+	return !d.Dir
+}
+
+// A string representing the collection tags associated with a directory entry
+func (d TaggedDirentry) DisplayTags() string {
+	first := true
+	resp := ""
+	for _, tag := range d.Tags {
+		if first {
+			resp = fmt.Sprintf("%s: %s", tag.CollectionName, tag.SubCollection)
+			first = false
+		} else {
+			resp = fmt.Sprintf("%s, %s: %s", resp, tag.CollectionName, tag.SubCollection)
+		}
+	}
+	return resp
+}
+
+// A User
+type User struct {
+	Id                  int
+	Name                string
+	AutoAudition        bool
+	TargetCollection    *Collection
+	TargetSubCollection string
+	Root                string
+}
+
+// Struct holding the app's configuration
+type Config struct {
+	Data              string
+	Root              string
+	DbFileName        string
+	CreateSqlCommands []byte
+}
+
+// Constructor for the Config struct
+func NewConfig(data string, root string, dbFileName string) *Config {
+	log.Printf("data: %v, samples: %v", data, root)
+	sqlCommands, err := os.ReadFile("sql_commands/create_db.sql")
+	if err != nil {
+		log.Fatalf("Failed to read SQL commands: %v", err)
+	}
+	rootExists := true
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		rootExists = false
+	}
+	if !rootExists {
+		log.Fatalf("No root samples directory found at %v", root)
+	}
+	config := Config{
+		Data:              data,
+		Root:              root,
+		DbFileName:        dbFileName,
+		CreateSqlCommands: sqlCommands,
+	}
+	return &config
+}
+
+func (c *Config) SetRoot(root string) {
+	root = ExpandHomeDir(root)
+	c.Root = root
+}
+
+func CreateDirectories(dir string) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			panic(err)
+		}
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		log.Fatal("Creating directory failed at ", dir)
+	}
+}
+
+// Handles either creating or checking the existence of the data and samples directories
+func (c *Config) CreateDataDirectory() {
+	CreateDirectories(c.Data)
+}
+
+// Standardized file structure for the database file
+func (c *Config) GetDbPath() string {
+	if c.DbFileName == "" {
+		c.DbFileName = "excavator"
+	}
+	if !strings.HasSuffix(c.DbFileName, ".db") {
+		c.DbFileName = c.DbFileName + ".db"
+	}
+	return filepath.Join(c.Data, c.DbFileName)
+}
+
+// A Collection
+type Collection struct {
+	id          int
+	name        string
+	description string
+}
+
+func NewCollection(id int, name string, description string) Collection {
+	return Collection{id: id, name: name, description: description}
+}
+
+// Requirement for a listSelectionItem
+func (c Collection) Id() int {
+	return c.id
+}
+
+// Requirement for a listSelectionItem
+func (c Collection) Name() string {
+	return c.name
+}
+
+// Requirement for a listSelectionItem
+func (c Collection) Description() string {
+	return c.description
+}
+
+// Requirement for a listSelectionItem
+func (c Collection) IsDir() bool {
+	return false
+}
+
+// Requirement for a listSelectionItem
+func (c Collection) IsFile() bool {
+	return false
 }

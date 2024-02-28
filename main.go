@@ -580,7 +580,7 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 	case key.Matches(msg, m.Keys.Enter):
 		switch m.SelectableList {
 		case "search for collection":
-			if collection, ok := m.Server.State.Choices[m.Cursor].(Collection); ok {
+			if collection, ok := m.Server.State.Choices[m.Cursor].(core.Collection); ok {
 				m.Server.UpdateTargetCollection(collection)
 				m, cmd = m.GoToMainWindow(msg, cmd)
 			} else {
@@ -787,137 +787,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 //////////////////////// LOCAL SERVER ////////////////////////
 
-// A connection between a tag and a collection
-type CollectionTag struct {
-	FilePath       string
-	CollectionName string
-	SubCollection  string
-}
-
-// A directory entry with associated tags
-type TaggedDirentry struct {
-	Path string
-	Tags []CollectionTag
-	Dir  bool
-}
-
-func (d TaggedDirentry) Id() int {
-	return 0
-}
-
-func (d TaggedDirentry) Name() string {
-	return d.Path
-}
-
-func (d TaggedDirentry) Description() string {
-	return d.DisplayTags()
-}
-
-func (d TaggedDirentry) IsDir() bool {
-	return d.Dir
-}
-
-func (d TaggedDirentry) IsFile() bool {
-	return !d.Dir
-}
-
-// A string representing the collection tags associated with a directory entry
-func (d TaggedDirentry) DisplayTags() string {
-	first := true
-	resp := ""
-	for _, tag := range d.Tags {
-		if first {
-			resp = fmt.Sprintf("%s: %s", tag.CollectionName, tag.SubCollection)
-			first = false
-		} else {
-			resp = fmt.Sprintf("%s, %s: %s", resp, tag.CollectionName, tag.SubCollection)
-		}
-	}
-	return resp
-}
-
-// A User
-type User struct {
-	Id                  int
-	Name                string
-	AutoAudition        bool
-	TargetCollection    *Collection
-	TargetSubCollection string
-	Root                string
-}
-
-// Struct holding the app's configuration
-type Config struct {
-	Data              string
-	Root              string
-	DbFileName        string
-	CreateSqlCommands []byte
-}
-
-// Constructor for the Config struct
-func NewConfig(data string, root string, dbFileName string) *Config {
-	log.Printf("data: %v, samples: %v", data, root)
-	sqlCommands, err := os.ReadFile("sql_commands/create_db.sql")
-	if err != nil {
-		log.Fatalf("Failed to read SQL commands: %v", err)
-	}
-	rootExists := true
-	if _, err := os.Stat(root); os.IsNotExist(err) {
-		rootExists = false
-	}
-	if !rootExists {
-		log.Fatalf("No root samples directory found at %v", root)
-	}
-	config := Config{
-		Data:              data,
-		Root:              root,
-		DbFileName:        dbFileName,
-		CreateSqlCommands: sqlCommands,
-	}
-	return &config
-}
-
-func (c *Config) SetRoot(root string) {
-	root = core.ExpandHomeDir(root)
-	c.Root = root
-}
-
-func CreateDirectories(dir string) {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			panic(err)
-		}
-	}
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		log.Fatal("Creating directory failed at ", dir)
-	}
-}
-
-// Handles either creating or checking the existence of the data and samples directories
-func (c *Config) CreateDataDirectory() {
-	CreateDirectories(c.Data)
-}
-
-// Standardized file structure for the database file
-func (c *Config) GetDbPath() string {
-	if c.DbFileName == "" {
-		c.DbFileName = "excavator"
-	}
-	if !strings.HasSuffix(c.DbFileName, ".db") {
-		c.DbFileName = c.DbFileName + ".db"
-	}
-	return filepath.Join(c.Data, c.DbFileName)
-}
-
 type State struct {
 	Root           string
 	Dir            string
 	choiceChannel  chan core.SelectableListItem
 	Choices        []core.SelectableListItem
-	CollectionTags func(path string) []CollectionTag
+	CollectionTags func(path string) []core.CollectionTag
 }
 
-func NewNavState(root string, currentDir string, collectionTags func(path string) []CollectionTag) *State {
+func NewNavState(root string, currentDir string, collectionTags func(path string) []core.CollectionTag) *State {
 	choiceChannel := make(chan core.SelectableListItem)
 	navState := State{
 		Root:           root,
@@ -962,7 +840,7 @@ func (n *State) UpdateChoices() {
 	if n.Dir != n.Root {
 		n.Choices = make([]core.SelectableListItem, 0)
 		dirEntries := n.ListDirEntries()
-		n.Choices = append(n.Choices, TaggedDirentry{Path: "..", Tags: make([]CollectionTag, 0), Dir: true})
+		n.Choices = append(n.Choices, core.TaggedDirentry{Path: "..", Tags: make([]core.CollectionTag, 0), Dir: true})
 		n.Choices = append(n.Choices, dirEntries...)
 	} else {
 		n.Choices = n.ListDirEntries()
@@ -999,7 +877,7 @@ func (f *State) ListDirEntries() []core.SelectableListItem {
 	files = f.FilterDirEntries(files)
 	var samples []core.SelectableListItem
 	for _, file := range files {
-		matchedTags := make([]CollectionTag, 0)
+		matchedTags := make([]core.CollectionTag, 0)
 		isDir := file.IsDir()
 		if !isDir {
 			for _, tag := range f.CollectionTags(f.Dir) {
@@ -1008,7 +886,7 @@ func (f *State) ListDirEntries() []core.SelectableListItem {
 				}
 			}
 		}
-		samples = append(samples, TaggedDirentry{Path: file.Name(), Tags: matchedTags, Dir: isDir})
+		samples = append(samples, core.TaggedDirentry{Path: file.Name(), Tags: matchedTags, Dir: isDir})
 	}
 	return samples
 }
@@ -1056,13 +934,13 @@ func (s *Server) GetAllDirectories(path string) []string {
 // The main struct holding the Server
 type Server struct {
 	Db     *sql.DB
-	User   User
+	User   core.User
 	State  *State
 	Player *audio.Player
 }
 
-func (s *Server) HandleUserArg(userCliArg *string) User {
-	var user User
+func (s *Server) HandleUserArg(userCliArg *string) core.User {
+	var user core.User
 	users := s.GetUsers(userCliArg)
 	if len(*userCliArg) == 0 && len(users) == 0 {
 		log.Fatal("No users found")
@@ -1114,7 +992,7 @@ func ParseFlags() *Flags {
 }
 
 // Part of newServer constructor
-func (s *Server) HandleRootConstruction(config *Config) *Server {
+func (s *Server) HandleRootConstruction(config *core.Config) *Server {
 	if s.User.Root == "" && config.Root == "" {
 		log.Fatal("No root found")
 	} else if config.Root == "" {
@@ -1126,13 +1004,13 @@ func (s *Server) HandleRootConstruction(config *Config) *Server {
 		log.Println("launched with temporary root ", config.Root)
 		s.User.Root = config.Root
 	}
-	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.User, s.User.TargetCollection.name, s.User.TargetSubCollection)
+	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.User, s.User.TargetCollection.Name(), s.User.TargetSubCollection)
 	return s
 }
 
 // Construct the server
 func NewServer(audioPlayer *audio.Player, flags *Flags) *Server {
-	config := NewConfig(flags.data, flags.root, flags.dbFileName)
+	config := core.NewConfig(flags.data, flags.root, flags.dbFileName)
 	config.CreateDataDirectory()
 	dbPath := config.GetDbPath()
 	db, err := sql.Open("sqlite3", dbPath)
@@ -1176,9 +1054,9 @@ func (s *Server) UpdateChoices() {
 }
 
 // Set the current user's target collection and update in db
-func (s *Server) UpdateTargetCollection(collection Collection) {
+func (s *Server) UpdateTargetCollection(collection core.Collection) {
 	s.User.TargetCollection = &collection
-	s.UpdateSelectedCollectionInDb(collection.id)
+	s.UpdateSelectedCollectionInDb(collection.Id())
 	s.UpdateTargetSubCollection("")
 	s.User.TargetSubCollection = ""
 }
@@ -1194,13 +1072,13 @@ func (s *Server) UpdateTargetSubCollection(subCollection string) {
 
 // Create a tag with the defaults based on the current state
 func (s *Server) CreateQuickTag(filepath string) {
-	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.id, path.Base(filepath), s.User.TargetSubCollection)
+	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), path.Base(filepath), s.User.TargetSubCollection)
 	s.UpdateChoices()
 }
 
 // Create a tag with all possible args
 func (s *Server) CreateTag(filepath string, name string, subCollection string) {
-	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.id, name, subCollection)
+	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), name, subCollection)
 	s.UpdateChoices()
 }
 
@@ -1246,13 +1124,13 @@ func (s *Server) FuzzyFind(search string, fromRoot bool) []core.SelectableListIt
 			entries = append(entries, d)
 		}
 		files = append(files, d)
-		matchedTags := make([]CollectionTag, 0)
+		matchedTags := make([]core.CollectionTag, 0)
 		for _, tag := range collectionTags {
 			if strings.Contains(tag.FilePath, path) {
 				matchedTags = append(matchedTags, tag)
 			}
 		}
-		s.State.pushChoice(TaggedDirentry{Path: path, Tags: matchedTags, Dir: false})
+		s.State.pushChoice(core.TaggedDirentry{Path: path, Tags: matchedTags, Dir: false})
 		return nil
 	})
 	if err != nil {
@@ -1265,7 +1143,7 @@ func (s *Server) FuzzyFind(search string, fromRoot bool) []core.SelectableListIt
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
 
 // Get collection tags associated with a directory
-func (s *Server) GetCollectionTags(dir string) []CollectionTag {
+func (s *Server) GetCollectionTags(dir string) []core.CollectionTag {
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -1278,21 +1156,21 @@ where t.file_path like ?`
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]CollectionTag, 0)
+	tags := make([]core.CollectionTag, 0)
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
-func (s *Server) FuzzyFindCollectionTags(search string) []CollectionTag {
+func (s *Server) FuzzyFindCollectionTags(search string) []core.CollectionTag {
 	words := strings.Fields(search)
 	if len(words) == 0 {
-		return make([]CollectionTag, 0)
+		return make([]core.CollectionTag, 0)
 	} else if len(words) == 1 {
 		search = "%" + search + "%"
 	} else {
@@ -1317,7 +1195,7 @@ where t.file_path like ?`
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]CollectionTag, 0)
+	tags := make([]core.CollectionTag, 0)
 	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
@@ -1325,13 +1203,13 @@ where t.file_path like ?`
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
-		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
 // Get collection tags associated with a directory
-func (s *Server) SearchCollectionTags(search string) []CollectionTag {
+func (s *Server) SearchCollectionTags(search string) []core.CollectionTag {
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -1344,7 +1222,7 @@ where t.file_path like ?`
 		log.Fatalf("Failed to execute SQL statement: %v", err)
 	}
 	defer rows.Close()
-	tags := make([]CollectionTag, 0)
+	tags := make([]core.CollectionTag, 0)
 	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
@@ -1352,12 +1230,12 @@ where t.file_path like ?`
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
-		tags = append(tags, CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
 	return tags
 }
 
-func (s *Server) GetUser(id int) User {
+func (s *Server) GetUser(id int) core.User {
 	fmt.Println("getting user ", id)
 	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
 	row := s.Db.QueryRow(statement, id)
@@ -1371,17 +1249,19 @@ func (s *Server) GetUser(id int) User {
 	if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 		log.Fatalf("Failed to scan row: %v", err)
 	}
-	var selectedCollection *Collection
+	var selectedCollection *core.Collection
 	if collectionId != nil && collectionName != nil && collectionDescription != nil {
-		selectedCollection = &Collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+		collection := core.NewCollection(*collectionId, *collectionName, *collectionDescription)
+		selectedCollection = &collection
 	} else {
-		selectedCollection = &Collection{id: 0, name: "", description: ""}
+		collection := core.NewCollection(0, "", "")
+		selectedCollection = &collection
 	}
-	return User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root}
+	return core.User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root}
 }
 
 // Get all users
-func (s *Server) GetUsers(name *string) []User {
+func (s *Server) GetUsers(name *string) []core.User {
 	var whereClause string
 	var rows *sql.Rows
 	var err error
@@ -1399,7 +1279,7 @@ func (s *Server) GetUsers(name *string) []User {
 		log.Fatalf("Failed to execute SQL statement in getUsers: %v", err)
 	}
 	defer rows.Close()
-	users := make([]User, 0)
+	users := make([]core.User, 0)
 	for rows.Next() {
 		var id int
 		var name string
@@ -1412,13 +1292,15 @@ func (s *Server) GetUsers(name *string) []User {
 		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		var selectedCollection *Collection
+		var selectedCollection *core.Collection
 		if collectionId != nil && collectionName != nil && collectionDescription != nil {
-			selectedCollection = &Collection{id: *collectionId, name: *collectionName, description: *collectionDescription}
+			collection := core.NewCollection(*collectionId, *collectionName, *collectionDescription)
+			selectedCollection = &collection
 		} else {
-			selectedCollection = &Collection{id: 0, name: "", description: ""}
+			collection := core.NewCollection(0, "", "")
+			selectedCollection = &collection
 		}
-		users = append(users, User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root})
+		users = append(users, core.User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root})
 	}
 	return users
 }
@@ -1483,51 +1365,15 @@ func (s *Server) CreateCollection(name string, description string) int {
 	return int(id)
 }
 
-// A Collection
-type Collection struct {
-	id          int
-	name        string
-	description string
-}
-
-func NewCollection(id int, name string, description string) Collection {
-	return Collection{id: id, name: name, description: description}
-}
-
-// Requirement for a listSelectionItem
-func (c Collection) Id() int {
-	return c.id
-}
-
-// Requirement for a listSelectionItem
-func (c Collection) Name() string {
-	return c.name
-}
-
-// Requirement for a listSelectionItem
-func (c Collection) Description() string {
-	return c.description
-}
-
-// Requirement for a listSelectionItem
-func (c Collection) IsDir() bool {
-	return false
-}
-
-// Requirement for a listSelectionItem
-func (c Collection) IsFile() bool {
-	return false
-}
-
 // Get all collections for the current user
-func (s *Server) GetCollections() []Collection {
+func (s *Server) GetCollections() []core.Collection {
 	statement := `select id, name, description from Collection where user_id = ?`
 	rows, err := s.Db.Query(statement, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollections: %v", err)
 	}
 	defer rows.Close()
-	collections := make([]Collection, 0)
+	collections := make([]core.Collection, 0)
 	for rows.Next() {
 		var id int
 		var name string
@@ -1535,7 +1381,7 @@ func (s *Server) GetCollections() []Collection {
 		if err := rows.Scan(&id, &name, &description); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		collection := Collection{id: id, name: name, description: description}
+		collection := core.NewCollection(id, name, description)
 		collections = append(collections, collection)
 	}
 	return collections
@@ -1627,7 +1473,7 @@ func (s SubCollection) IsFile() bool {
 
 func (s *Server) GetCollectionSubcollections() []SubCollection {
 	statement := `select distinct sub_collection from CollectionTag where collection_id = ? order by sub_collection asc`
-	rows, err := s.Db.Query(statement, s.User.TargetCollection.id)
+	rows, err := s.Db.Query(statement, s.User.TargetCollection.Id())
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollectionSubcollections: %v", err)
 	}
@@ -1649,7 +1495,7 @@ func (s *Server) SearchCollectionSubcollections(search string) []SubCollection {
                   FROM CollectionTag
                   WHERE collection_id = ? AND sub_collection LIKE ?
                   ORDER BY sub_collection ASC`
-	rows, err := s.Db.Query(statement, s.User.TargetCollection.id, fuzzySearch)
+	rows, err := s.Db.Query(statement, s.User.TargetCollection.Id(), fuzzySearch)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in searchCollectionSubcollections: %v", err)
 	}
@@ -1730,7 +1576,7 @@ func Watch(filePath string, n int) error {
 // chris_brown_run_it.ogg
 func main() {
 	cliFlags := ParseFlags()
-	CreateDirectories(cliFlags.data)
+	core.CreateDirectories(cliFlags.data)
 	logFilePath := filepath.Join(cliFlags.data, cliFlags.logFile)
 	if cliFlags.watch {
 		Watch(logFilePath, 10)
