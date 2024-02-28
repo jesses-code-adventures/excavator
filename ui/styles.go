@@ -13,8 +13,7 @@ var (
 	Pink  = lipgloss.Color("#E441B5")
 	White = lipgloss.Color("#FFFDF5")
 	// App
-	AppStyle = lipgloss.NewStyle().
-			Padding(1, 1)
+	AppStyle   = lipgloss.NewStyle()
 	TitleStyle = lipgloss.NewStyle().
 			Foreground(White).
 			Background(Green).

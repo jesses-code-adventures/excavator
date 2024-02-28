@@ -140,11 +140,6 @@ func (m Model) FooterView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
-	var searchInput string
-	if m.WindowType == core.SearchableSelectableListWindow {
-		searchInput = SearchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
-		return searchInput + "\n" + m.GetStatusDisplay() + "\n" + centeredHelpText
-	}
 	return m.GetStatusDisplay() + "\n" + centeredHelpText
 }
 
@@ -168,10 +163,10 @@ func (m Model) DirectoryView() string {
 	for i, choice := range m.Server.State.Choices {
 		var newLine string
 		if m.Cursor == i {
-			cursor := "--> "
+			cursor := ">"
 			newLine = fmt.Sprintf("%s %s", cursor, choice.Name())
 		} else {
-			newLine = fmt.Sprintf("     %s", choice.Name())
+			newLine = fmt.Sprintf("  %s", choice.Name())
 		}
 		if len(newLine) > m.Viewport.Width {
 			newLine = newLine[:m.Viewport.Width-2]
@@ -186,6 +181,11 @@ func (m Model) DirectoryView() string {
 			}
 		}
 		s += newLine
+	}
+	var searchInput string
+	if m.WindowType == core.SearchableSelectableListWindow {
+		searchInput = SearchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
+		return s + "\n" + searchInput
 	}
 	return s
 }
@@ -241,18 +241,9 @@ func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch m.WindowType {
 	case core.FormWindow:
 		m.Viewport.SetContent(m.FormView())
-	// case core.DirectoryWalker:
-	// 	m.Viewport = m.EnsureCursorVerticallyCentered()
-	// 	m.Viewport.SetContent(m.DirectoryView())
-	// case core.ListSelectionWindow:
-	// 	m.Viewport.SetContent(m.DirectoryView())
-	// case core.SearchableSelectableListWindow:
-	// 	m.Viewport = m.EnsureCursorVerticallyCentered()
-	// 	m.Viewport.SetContent(m.DirectoryView())
 	default:
 		m.Viewport = m.EnsureCursorVerticallyCentered()
 		m.Viewport.SetContent(m.DirectoryView())
-		// m.Viewport.SetContent("Invalid window type")
 	}
 	return m, cmd
 }
