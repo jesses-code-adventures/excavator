@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jesses-code-adventures/excavator/src/utils"
+	"github.com/jesses-code-adventures/excavator/core"
 
 	// Database
 	_ "github.com/mattn/go-sqlite3"
@@ -1129,7 +1129,7 @@ type config struct {
 // Constructor for the Config struct
 func newConfig(data string, root string, dbFileName string) *config {
 	log.Printf("data: %v, samples: %v", data, root)
-	sqlCommands, err := os.ReadFile("src/sql_commands/create_db.sql")
+	sqlCommands, err := os.ReadFile("sql_commands/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
 	}
@@ -1150,7 +1150,7 @@ func newConfig(data string, root string, dbFileName string) *config {
 }
 
 func (c *config) setRoot(root string) {
-	root = utils.ExpandHomeDir(root)
+	root = core.ExpandHomeDir(root)
 	c.root = root
 }
 
@@ -1382,7 +1382,7 @@ func parseCliFlags() *cliFlags {
 	var userArg = flag.String("user", "", "User name to launch with")
 	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
-	return &cliFlags{data: utils.ExpandHomeDir(*data), dbFileName: *dbFileName, logFile: *logFile, root: utils.ExpandHomeDir(*samples), user: *userArg, watch: *watch}
+	return &cliFlags{data: core.ExpandHomeDir(*data), dbFileName: *dbFileName, logFile: *logFile, root: core.ExpandHomeDir(*samples), user: *userArg, watch: *watch}
 }
 
 // Part of newServer constructor
