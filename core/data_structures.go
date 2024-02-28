@@ -294,3 +294,31 @@ func (c Collection) IsDir() bool {
 func (c Collection) IsFile() bool {
 	return false
 }
+
+type SubCollection struct {
+	name string
+}
+
+func NewSubCollection(name string) SubCollection {
+	return SubCollection{name: name}
+}
+
+func (s SubCollection) Id() int {
+	return 0
+}
+
+func (s SubCollection) Name() string {
+	return s.name
+}
+
+func (s SubCollection) Description() string {
+	return ""
+}
+
+func (s SubCollection) IsDir() bool {
+	return false
+}
+
+func (s SubCollection) IsFile() bool {
+	return false
+}
