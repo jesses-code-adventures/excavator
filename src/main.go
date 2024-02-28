@@ -78,6 +78,7 @@ type KeyMap struct {
 	CreateTag              key.Binding
 	SetTargetSubCollection key.Binding
 	FuzzySearchFromRoot    key.Binding
+	ToggleShowCollections  key.Binding
 }
 
 // The actual help text
@@ -165,6 +166,10 @@ var DefaultKeyMap = KeyMap{
 	FuzzySearchFromRoot: key.NewBinding(
 		key.WithKeys("F"),
 		key.WithHelp("F", "search sounds from root"),
+	),
+	ToggleShowCollections: key.NewBinding(
+		key.WithKeys("K"),
+		key.WithHelp("K", "show collections"),
 	),
 }
 
@@ -366,6 +371,7 @@ func (m model) filterListItems() model {
 type model struct {
 	ready                    bool
 	quitting                 bool
+	showCollections          bool
 	cursor                   int
 	prevCursor               int
 	viewportHeight           int
@@ -398,12 +404,13 @@ func (w windowType) String() string {
 // Constructor for the app's model
 func excavatorModel(server *server) model {
 	return model{
-		ready:      false,
-		quitting:   false,
-		server:     server,
-		help:       help.New(),
-		keys:       DefaultKeyMap,
-		windowType: DirectoryWalker,
+		ready:           false,
+		quitting:        false,
+		showCollections: false,
+		server:          server,
+		help:            help.New(),
+		keys:            DefaultKeyMap,
+		windowType:      DirectoryWalker,
 	}
 }
 
@@ -439,12 +446,13 @@ func (m model) getStatusDisplay() string {
 	termWidth := m.viewport.Width
 	msg := ""
 	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection, m.windowType.String(), len(m.server.navState.choices))
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v, descriptions: %v", m.server.currentUser.targetCollection.Name(), m.server.currentUser.targetSubCollection, m.windowType.String(), len(m.server.navState.choices), m.showCollections)
 	items := []statusDisplayItem{
 		newStatusDisplayItem("collection", m.server.currentUser.targetCollection.Name()),
 		newStatusDisplayItem("subcollection", m.server.currentUser.targetSubCollection),
 		newStatusDisplayItem("window", fmt.Sprintf("%v", m.windowType.String())),
 		newStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.server.navState.choices))),
+		newStatusDisplayItem("descriptions", fmt.Sprintf("%v", m.showCollections)),
 	}
 	for i, item := range items {
 		msg += item.View()
@@ -512,7 +520,11 @@ func (m model) directoryView() string {
 		if m.cursor == i {
 			newLine = selectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
 		} else {
-			newLine = unselectedStyle.Render(newLine)
+			if m.showCollections {
+				newLine = unselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
+			} else {
+				newLine = unselectedStyle.Render(newLine)
+			}
 		}
 		s += newLine
 	}
@@ -785,6 +797,8 @@ func (m model) handleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.Cmd) 
 				m.server.navState.changeDir(choice.Name())
 			}
 		}
+	case key.Matches(msg, m.keys.ToggleShowCollections):
+		m.showCollections = !m.showCollections
 	case key.Matches(msg, m.keys.NewCollection):
 		m, cmd = m.setWindowType(msg, cmd, FormWindow, "new collection")
 	case key.Matches(msg, m.keys.SetTargetSubCollection):
@@ -822,6 +836,8 @@ func (m model) handleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (model, tea.C
 		return m.goToMainWindow(msg, cmd)
 	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
 		m = m.handleStandardMovementKey(msg)
+	case key.Matches(msg, m.keys.ToggleShowCollections):
+		m.showCollections = !m.showCollections
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
@@ -955,6 +971,8 @@ func (m model) handleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (model, t
 		return m.goToMainWindow(msg, cmd)
 	case key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) || key.Matches(msg, m.keys.JumpDown) || key.Matches(msg, m.keys.JumpUp) || key.Matches(msg, m.keys.Audition) || key.Matches(msg, m.keys.AuditionRandom) || key.Matches(msg, m.keys.JumpBottom):
 		m = m.handleStandardMovementKey(msg)
+	case key.Matches(msg, m.keys.ToggleShowCollections):
+		m.showCollections = !m.showCollections
 	case key.Matches(msg, m.keys.NewCollection):
 		m.form = getNewCollectionForm()
 		m, cmd = m.setWindowType(msg, cmd, FormWindow, "")
