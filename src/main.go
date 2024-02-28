@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	// "os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -594,18 +596,7 @@ func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
-	// Main content view
-	var contentView string
-	switch m.windowType {
-	case DirectoryWalker, FormWindow, ListSelectionWindow, SearchableSelectableList:
-		contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView())
-	// case SearchableSelectableList:
-	// 	contentView = fmt.Sprintf("%s\n%s\n%s", m.headerView(), searchableSelectableListStyle.Render(m.directoryView()),  m.footerView())
-	default:
-		contentView = "Invalid window type"
-	}
-
-	return appStyle.Render(contentView)
+	return appStyle.Render(fmt.Sprintf("%s\n%s\n%s", m.headerView(), viewportStyle.Render(m.viewport.View()), m.footerView()))
 }
 
 // ////////////////////// UI UPDATING ////////////////////////
@@ -1327,14 +1318,78 @@ type server struct {
 	audioPlayer *AudioPlayer
 }
 
-// Construct the server
-func newServer(audioPlayer *AudioPlayer) *server {
+func (s *server) handleUserArg(userCliArg *string) user {
+	var user user
+	users := s.getUsers(userCliArg)
+	if len(*userCliArg) == 0 && len(users) == 0 {
+		log.Fatal("No users found")
+	}
+	if len(*userCliArg) == 0 && len(users) > 0 {
+		user = users[0]
+		return user
+	}
+	if len(*userCliArg) > 0 && len(users) == 0 {
+		id := s.createUser(*userCliArg)
+		if id == 0 {
+			log.Fatal("Failed to create user")
+		}
+		user = s.getUser(id)
+		return user
+	}
+	if len(*userCliArg) > 0 && len(users) > 0 {
+		for _, u := range users {
+			if u.name == *userCliArg {
+				return u
+			}
+		}
+		id := s.createUser(*userCliArg)
+		user = s.getUser(id)
+		return user
+	}
+	log.Fatal("We should never get here")
+	return user
+}
+
+type cliFlags struct {
+	data       string
+	dbFileName string
+	logFile    string
+	root       string
+	user       string
+	watch      bool
+}
+
+func parseCliFlags() *cliFlags {
 	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
-	var samples = flag.String("root", "~/Library/Audio/Sounds/Samples", "Root samples directory")
-	var user = flag.String("user", "jesse", "User name to launch with")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
+	var logFile = flag.String("log", "logfile", "Log file name")
+	var samples = flag.String("root", "~/Library/Audio/Sounds/Samples", "Root samples directory")
+	var userArg = flag.String("user", "", "User name to launch with")
+	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
-	config := newConfig(*data, *samples, *dbFileName)
+	return &cliFlags{data: *data, dbFileName: *dbFileName, logFile: *logFile, root: *samples, user: *userArg, watch: *watch}
+}
+
+// Part of newServer constructor
+func (s *server) handleRootConstruction(config *config) *server {
+	if s.currentUser.root == "" && config.root == "" {
+		log.Fatal("No root found")
+	} else if config.root == "" {
+		config.root = s.currentUser.root
+	} else if s.currentUser.root == "" {
+		s.currentUser.root = config.root // TODO: prompt the user to see if they want to save the root
+		s.updateRootInDb(config.root)
+	} else if s.currentUser.root != config.root {
+		log.Println("launched with temporary root ", config.root)
+		s.currentUser.root = config.root
+	}
+	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
+	return s
+}
+
+// Construct the server
+func newServer(audioPlayer *AudioPlayer, flags *cliFlags) *server {
+	config := newConfig(flags.data, flags.root, flags.dbFileName)
 	config.createDataDirectory()
 	dbPath := config.getDbPath()
 	db, err := sql.Open("sqlite3", dbPath)
@@ -1351,48 +1406,8 @@ func newServer(audioPlayer *AudioPlayer) *server {
 		db:          db,
 		audioPlayer: audioPlayer,
 	}
-	users := s.getUsers(user)
-	log.Print("users: ", users)
-	log.Print("user: ", *user)
-	if len(users) == 0 && len(*user) > 0 {
-		id := s.createUser(*user)
-		if id == 0 {
-			log.Fatal("Failed to create user")
-		}
-		s.currentUser = s.getUser(id)
-	} else if len(users) > 0 && len(*user) > 0 && users[0].name != *user {
-		createdIdx := s.createUser(*user)
-		s.currentUser = s.getUser(createdIdx)
-	} else if len(users) > 0 && len(*user) == 0 {
-		s.currentUser = users[0]
-	} else if len(users) > 0 && len(*user) > 0 {
-		found := 0
-		for i, u := range users {
-			if u.name == *user {
-				found = i
-			}
-		}
-		if found == 0 {
-			createdIdx := s.createUser(*user)
-			s.currentUser = s.getUser(createdIdx)
-		} else {
-			s.currentUser = users[found]
-		}
-	} else {
-		log.Fatal("No users found")
-	}
-	if s.currentUser.root == "" && config.root == "" {
-		log.Fatal("No root found")
-	} else if config.root == "" {
-		config.root = s.currentUser.root
-	} else if s.currentUser.root == "" {
-		s.currentUser.root = config.root // TODO: prompt the user to see if they want to save the root
-		s.updateRootInDb(config.root)
-	} else if s.currentUser.root != config.root {
-		log.Println("launched with temporary root ", config.root)
-		s.currentUser.root = config.root
-	}
-	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.currentUser, s.currentUser.targetCollection.name, s.currentUser.targetSubCollection)
+	s.currentUser = s.handleUserArg(&flags.user)
+	s = *s.handleRootConstruction(config)
 	navState := newNavState(config.root, config.root, s.getCollectionTags)
 	s.navState = navState
 	s.navState.updateChoices()
@@ -1600,6 +1615,7 @@ where t.file_path like ?`
 }
 
 func (s *server) getUser(id int) user {
+	fmt.Println("getting user ", id)
 	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
 	row := s.db.QueryRow(statement, id)
 	var name string
@@ -1626,7 +1642,7 @@ func (s *server) getUsers(name *string) []user {
 	var whereClause string
 	var rows *sql.Rows
 	var err error
-	if name != nil {
+	if name != nil && len(*name) > 0 {
 		whereClause = "where u.name = ?"
 	}
 	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
@@ -2066,16 +2082,15 @@ type App struct {
 }
 
 // Construct the app
-func NewApp() App {
-	path := utils.ExpandHomeDir("~/.excavator-tui")
-	createDirectories(path)
-	f, err := os.OpenFile(filepath.Join(path, "logfile"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func NewApp(cliFlags *cliFlags) App {
+	logFilePath := filepath.Join(cliFlags.data, cliFlags.logFile)
+	f, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
 	log.SetOutput(f)
 	audioPlayer := NewAudioPlayer()
-	server := newServer(audioPlayer)
+	server := newServer(audioPlayer, cliFlags)
 	return App{
 		server:         server,
 		bubbleTeaModel: excavatorModel(server),
@@ -2083,18 +2098,61 @@ func NewApp() App {
 	}
 }
 
+// watches the logfile
+func watch(filePath string, n int) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			file, err := os.Open(filePath)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			scanner := bufio.NewScanner(file)
+			lines := make([]string, 0)
+			for scanner.Scan() {
+				lines = append(lines, scanner.Text())
+				if len(lines) > n {
+					lines = lines[1:]
+				}
+			}
+
+			fmt.Print("\033[H\033[2J")
+			for _, line := range lines {
+				fmt.Println(line)
+			}
+
+			// Handle error from scanner.Err()
+			if err := scanner.Err(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // chris_brown_run_it.ogg
 func main() {
-	app := NewApp()
-	defer app.logFile.Close()
-	defer app.server.audioPlayer.Close()
-	defer app.server.db.Close()
-	p := tea.NewProgram(
-		app.bubbleTeaModel,
-		tea.WithAltScreen(),
-	)
-	_, err := p.Run()
-	if err != nil {
-		log.Fatalf("Failed to run program: %v", err)
+	cliFlags := parseCliFlags()
+	createDirectories(cliFlags.data)
+	logFilePath := filepath.Join(cliFlags.data, cliFlags.logFile)
+	if cliFlags.watch {
+		watch(logFilePath, 10)
+	} else {
+		app := NewApp(cliFlags)
+		defer app.logFile.Close()
+		defer app.server.audioPlayer.Close()
+		defer app.server.db.Close()
+		p := tea.NewProgram(
+			app.bubbleTeaModel,
+			tea.WithAltScreen(),
+		)
+		_, err := p.Run()
+		if err != nil {
+			log.Fatalf("Failed to run program: %v", err)
+		}
 	}
 }
