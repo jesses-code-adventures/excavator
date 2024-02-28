@@ -3,7 +3,6 @@ package server
 import (
 	"database/sql"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log"
 	"math/rand"
@@ -512,7 +511,6 @@ where t.file_path like ?`
 }
 
 func (s *Server) GetUser(id int) core.User {
-	fmt.Println("getting user ", id)
 	statement := `select u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id where u.id = ?`
 	row := s.Db.QueryRow(statement, id)
 	var name string

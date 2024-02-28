@@ -27,25 +27,26 @@ func (k *KeymapHacks) LastKeyWasG() bool {
 
 // All possible keymap bindings
 type KeyMap struct {
-	Up                     key.Binding
-	Down                   key.Binding
-	Quit                   key.Binding
-	JumpUp                 key.Binding
-	JumpDown               key.Binding
-	JumpBottom             key.Binding
-	Audition               key.Binding
-	SearchBuf              key.Binding
-	Enter                  key.Binding
-	NewCollection          key.Binding
-	SetTargetCollection    key.Binding
-	InsertMode             key.Binding
-	ToggleAutoAudition     key.Binding
-	AuditionRandom         key.Binding
-	CreateQuickTag         key.Binding
-	CreateTag              key.Binding
-	SetTargetSubCollection key.Binding
-	FuzzySearchFromRoot    key.Binding
-	ToggleShowCollections  key.Binding
+	Up                         key.Binding
+	Down                       key.Binding
+	Quit                       key.Binding
+	JumpUp                     key.Binding
+	JumpDown                   key.Binding
+	JumpBottom                 key.Binding
+	Audition                   key.Binding
+	SearchBuf                  key.Binding
+	Enter                      key.Binding
+	NewCollection              key.Binding
+	SetTargetCollection        key.Binding
+	InsertMode                 key.Binding
+	ToggleAutoAudition         key.Binding
+	AuditionRandom             key.Binding
+	CreateQuickTag             key.Binding
+	CreateTag                  key.Binding
+	SetTargetSubCollectionRoot key.Binding
+	SetTargetSubCollection     key.Binding
+	FuzzySearchFromRoot        key.Binding
+	ToggleShowCollections      key.Binding
 }
 
 // The actual help text
@@ -99,16 +100,20 @@ var DefaultKeyMap = KeyMap{
 		key.WithHelp("a", "audition sample"),
 	),
 	NewCollection: key.NewBinding(
-		key.WithKeys("N"),
-		key.WithHelp("N", "new collection"),
+		key.WithKeys("C"),
+		key.WithHelp("C", "new collection"),
+	),
+	SetTargetSubCollectionRoot: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "no target subecollection"),
 	),
 	SetTargetSubCollection: key.NewBinding(
 		key.WithKeys("D"),
 		key.WithHelp("D", "target subcollection"),
 	),
 	SetTargetCollection: key.NewBinding(
-		key.WithKeys("C"),
-		key.WithHelp("C", "select collection"),
+		key.WithKeys("c"),
+		key.WithHelp("c", "select collection"),
 	),
 	ToggleAutoAudition: key.NewBinding(
 		key.WithKeys("A"),

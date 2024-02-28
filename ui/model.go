@@ -241,16 +241,18 @@ func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch m.WindowType {
 	case core.FormWindow:
 		m.Viewport.SetContent(m.FormView())
-	case core.DirectoryWalker:
-		m.Viewport = m.EnsureCursorVerticallyCentered()
-		m.Viewport.SetContent(m.DirectoryView())
-	case core.ListSelectionWindow:
-		m.Viewport.SetContent(m.DirectoryView())
-	case core.SearchableSelectableListWindow:
-		m.Viewport = m.EnsureCursorVerticallyCentered()
-		m.Viewport.SetContent(m.DirectoryView())
+	// case core.DirectoryWalker:
+	// 	m.Viewport = m.EnsureCursorVerticallyCentered()
+	// 	m.Viewport.SetContent(m.DirectoryView())
+	// case core.ListSelectionWindow:
+	// 	m.Viewport.SetContent(m.DirectoryView())
+	// case core.SearchableSelectableListWindow:
+	// 	m.Viewport = m.EnsureCursorVerticallyCentered()
+	// 	m.Viewport.SetContent(m.DirectoryView())
 	default:
-		m.Viewport.SetContent("Invalid window type")
+		m.Viewport = m.EnsureCursorVerticallyCentered()
+		m.Viewport.SetContent(m.DirectoryView())
+		// m.Viewport.SetContent("Invalid window type")
 	}
 	return m, cmd
 }
@@ -459,8 +461,9 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 	case key.Matches(msg, m.Keys.NewCollection):
 		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "new collection")
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
-		log.Println("going to set target subcollection")
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "set target subcollection")
+	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
+		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "fuzzy search from root")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
@@ -502,6 +505,8 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "set target subcollection")
+	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
+		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "fuzzy search from root")
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
@@ -551,8 +556,10 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
 		m.Form.Writing = true
 		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
-	case key.Matches(msg, m.Keys.Quit), key.Matches(msg, m.Keys.NewCollection), key.Matches(msg, m.Keys.SetTargetSubCollection), key.Matches(msg, m.Keys.FuzzySearchFromRoot):
+	case key.Matches(msg, m.Keys.Quit), key.Matches(msg, m.Keys.NewCollection), key.Matches(msg, m.Keys.SetTargetSubCollection), key.Matches(msg, m.Keys.FuzzySearchFromRoot): // TODO: make these nav properly
 		m, cmd = m.GoToMainWindow(msg, cmd)
+	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
+		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
 		// m, cmd = m.handleListSelectionKey(msg, cmd)
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
@@ -636,6 +643,8 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
 		m.Form = core.GetTargetSubCollectionForm()
 		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
+	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
+		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
 		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
 	case key.Matches(msg, m.Keys.InsertMode) || key.Matches(msg, m.Keys.SearchBuf):
