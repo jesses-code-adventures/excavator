@@ -1129,9 +1129,6 @@ type config struct {
 // Constructor for the Config struct
 func newConfig(data string, root string, dbFileName string) *config {
 	log.Printf("data: %v, samples: %v", data, root)
-	data = utils.ExpandHomeDir(data)
-	root = utils.ExpandHomeDir(root)
-	log.Printf("expanded data: %v, samples: %v", data, root)
 	sqlCommands, err := os.ReadFile("src/sql_commands/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)
@@ -1385,7 +1382,7 @@ func parseCliFlags() *cliFlags {
 	var userArg = flag.String("user", "", "User name to launch with")
 	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
-	return &cliFlags{data: *data, dbFileName: *dbFileName, logFile: *logFile, root: *samples, user: *userArg, watch: *watch}
+	return &cliFlags{data: utils.ExpandHomeDir(*data), dbFileName: *dbFileName, logFile: *logFile, root: utils.ExpandHomeDir(*samples), user: *userArg, watch: *watch}
 }
 
 // Part of newServer constructor
