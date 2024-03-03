@@ -127,9 +127,45 @@ func NewSearchableList(title string) SearchableSelectableList {
 
 // A connection between a tag and a collection
 type CollectionTag struct {
+	id             int
 	FilePath       string
 	CollectionName string
 	SubCollection  string
+	name           string
+}
+
+func NewCollectionTag(id int, name string, filePath string, collectionName string, subCollection string) CollectionTag {
+	return CollectionTag{
+		id:             id,
+		FilePath:       filePath,
+		CollectionName: collectionName,
+		SubCollection:  subCollection,
+		name:           name,
+	}
+}
+
+func (t CollectionTag) Id() int {
+	return t.id
+}
+
+func (t CollectionTag) Name() string {
+	return t.name
+}
+
+func (d CollectionTag) Path() string {
+	return d.FilePath
+}
+
+func (d CollectionTag) Description() string {
+	return d.SubCollection
+}
+
+func (t CollectionTag) IsDir() bool {
+	return false
+}
+
+func (t CollectionTag) IsFile() bool {
+	return !t.IsDir()
 }
 
 // A directory entry with associated tags

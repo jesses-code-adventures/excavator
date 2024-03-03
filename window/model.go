@@ -226,6 +226,11 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		for _, file := range files {
 			m.Server.State.Choices = append(m.Server.State.Choices, file)
 		}
+	case BrowseCollectionWindow:
+		tags := m.Server.GetCollectionTagsAsListItem(m.Server.User.TargetCollection.Id())
+		for _, tag := range tags {
+			m.Server.State.Choices = append(m.Server.State.Choices, tag)
+		}
 	case FuzzySearchCurrentWindow:
 		files := m.Server.FuzzyFind("", false)
 		for _, file := range files {
@@ -285,44 +290,6 @@ func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, te
 	return m, cmd
 }
 
-// // Main handler to be called any time the window changes
-// func (m Model) SetWindowType(msg tea.Msg, cmd tea.Cmd, windowType WindowType, title string) (Model, tea.Cmd) {
-// 	if m.Window.Type() == windowType && m.SearchableSelectableList.Title == title {
-// 		m, cmd = m.GoToMainWindow(msg, cmd)
-// 		return m, cmd
-// 	}
-// 	switch windowType {
-// 	case DirectoryWalker:
-// 		m = m.ClearModel()
-// 		m, cmd = m.GoToMainWindow(msg, cmd)
-// 	case FormWindow:
-// 		if title == "" {
-// 			log.Fatalf("Title required for forms")
-// 		}
-// 		m, cmd = m.HandleForm(msg, cmd, title)
-// 	case ListSelectionWindow:
-// 		m = m.ClearModel()
-// 		if title == "" {
-// 			log.Fatalf("Title required for lists")
-// 		}
-// 		m, cmd = m.HandleTitledList(msg, cmd, title)
-// 	case SearchableSelectableListWindow:
-// 		m = m.ClearModel()
-// 		if title == "" {
-// 			log.Fatalf("Title required for lists")
-// 		}
-// 		m, cmd = m.HandleTitledList(msg, cmd, title)
-// 	default:
-// 		log.Fatalf("Invalid window type")
-// 	}
-//     log.Println("setting window type to ", windowType)
-// 	// m.Window.SetType(windowType)
-//     m.Window = NewWindow(windowType)
-//     log.Println("window type is now ", m.Window.Type())
-// 	m.Cursor = 0
-// 	return m, cmd
-// }
-
 // Audition the file under the cursor
 func (m Model) AuditionCurrentlySelectedFile() {
 	if len(m.Server.State.Choices) == 0 {
@@ -331,10 +298,10 @@ func (m Model) AuditionCurrentlySelectedFile() {
 	choice := m.Server.State.Choices[m.Cursor]
 	if !choice.IsDir() && choice.IsFile() {
 		var path string
-		if !strings.Contains(choice.Name(), m.Server.State.Dir) {
-			path = filepath.Join(m.Server.State.Dir, choice.Name())
+		if !strings.Contains(choice.Path(), m.Server.State.Dir) {
+			path = filepath.Join(m.Server.State.Dir, choice.Path())
 		} else {
-			path = choice.Name()
+			path = choice.Path()
 		}
 		go m.Server.Player.PlayAudioFile(path)
 	}
@@ -428,6 +395,8 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 		m, cmd = m.SetWindow(msg, cmd, FuzzySearchRootWindow)
 	case key.Matches(msg, m.Keys.SetTargetCollection):
 		m, cmd = m.SetWindow(msg, cmd, SetTargetCollectionWindow)
+	case key.Matches(msg, m.Keys.BrowseTargetCollection):
+		m, cmd = m.SetWindow(msg, cmd, BrowseCollectionWindow)
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.CreateQuickTag):
@@ -470,6 +439,8 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
 		m, cmd = m.SetWindow(msg, cmd, FuzzySearchRootWindow)
+	case key.Matches(msg, m.Keys.BrowseTargetCollection):
+		m, cmd = m.SetWindow(msg, cmd, BrowseCollectionWindow)
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):

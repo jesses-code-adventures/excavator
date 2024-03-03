@@ -49,6 +49,7 @@ type KeyMap struct {
 	ToggleShowCollections      key.Binding
 	CreateExport               key.Binding
 	RunExport                  key.Binding
+	BrowseTargetCollection     key.Binding
 }
 
 // The actual help text
@@ -152,5 +153,9 @@ var DefaultKeyMap = KeyMap{
 	RunExport: key.NewBinding(
 		key.WithKeys("e"),
 		key.WithHelp("e", "run export"),
+	),
+	BrowseTargetCollection: key.NewBinding(
+		key.WithKeys("b"),
+		key.WithHelp("b", "browse target collection"),
 	),
 }

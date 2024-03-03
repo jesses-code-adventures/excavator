@@ -439,12 +439,13 @@ func (s *Server) ExportCollection(collectionId int, exportId int) {
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
 // Get collection tags associated with a directory
 func (s *Server) GetCollectionTags(id int) []core.CollectionTag {
-	statement := `select t.file_path, col.name, ct.sub_collection
+	statement := `select ct.id, t.file_path, col.name, ct.sub_collection,
+ct.name
 from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where ct.id = ?`
+where ct.id = ? order by ct.sub_collection asc, ct.name asc`
 	rows, err := s.Db.Query(statement, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -452,11 +453,38 @@ where ct.id = ?`
 	defer rows.Close()
 	tags := make([]core.CollectionTag, 0)
 	for rows.Next() {
-		var filePath, collectionName, subCollection string
-		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
+		var filePath, collectionName, subCollection, name string
+		var id int
+		if err := rows.Scan(&id, &filePath, &collectionName, &subCollection, &name); err != nil {
 			log.Fatalf("Failed to scan row in getcollectiontags: %v", err)
 		}
-		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+		tags = append(tags, core.NewCollectionTag(id, name, filePath, collectionName, subCollection))
+	}
+	return tags
+}
+
+// Get collection tags associated with a directory
+func (s *Server) GetCollectionTagsAsListItem(id int) []core.SelectableListItem {
+	statement := `select ct.id, t.file_path, col.name, ct.sub_collection,
+ct.name
+from CollectionTag ct
+left join Collection col
+on ct.collection_id = col.id
+left join Tag t on ct.tag_id = t.id
+where ct.id = ? order by ct.sub_collection asc, ct.name asc`
+	rows, err := s.Db.Query(statement, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+	defer rows.Close()
+	tags := make([]core.SelectableListItem, 0)
+	for rows.Next() {
+		var filePath, collectionName, subCollection, name string
+		var id int
+		if err := rows.Scan(&id, &filePath, &collectionName, &subCollection, &name); err != nil {
+			log.Fatalf("Failed to scan row in getcollectiontags: %v", err)
+		}
+		tags = append(tags, core.NewCollectionTag(id, name, filePath, collectionName, subCollection))
 	}
 	return tags
 }
