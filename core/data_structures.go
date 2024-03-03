@@ -34,7 +34,7 @@ type Form struct {
 
 // A form constructor
 func NewForm(title string, inputs []FormInput) Form {
-    newForm :=Form{
+	newForm := Form{
 		Title:        title,
 		Inputs:       inputs,
 		Writing:      false,
@@ -331,33 +331,33 @@ type Export struct {
 }
 
 func NewExport(id int, name string, outputDir string, concrete bool) Export {
-    return Export{id: id, name: name, outputDir: outputDir, concrete: concrete}
+	return Export{id: id, name: name, outputDir: outputDir, concrete: concrete}
 }
 
 func (e Export) Id() int {
-    return e.id
+	return e.id
 }
 
 func (e Export) IsDir() bool {
-    return true
+	return true
 }
 
 func (e Export) IsFile() bool {
-    return false
+	return false
 }
 
 func (e Export) Name() string {
-    return e.name
+	return e.name
 }
 
 func (e Export) Path() string {
-    return e.outputDir
+	return e.outputDir
 }
 
 func (e Export) Description() string {
-    if e.concrete {
-        return "concrete"
-    } else {
-        return "abstract"
-    }
+	if e.concrete {
+		return "concrete"
+	} else {
+		return "abstract"
+	}
 }

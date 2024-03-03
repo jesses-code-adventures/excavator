@@ -22,7 +22,6 @@ func (w WindowType) String() string {
 	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableListWindow"}[w]
 }
 
-
 type WindowName int
 
 const (
@@ -34,7 +33,7 @@ const (
 	FuzzySearchRootWindow
 	FuzzySearchCurrentWindow
 	CreateExportWindow
-    RunExportWindow
+	RunExportWindow
 )
 
 func (w WindowName) String() string {
@@ -58,37 +57,37 @@ func (w WindowName) Window() Window {
 			name:       w,
 			windowType: FormWindow,
 		}
-    case SetTargetSubCollectionWindow:
-        return Window{
-            name:       w,
-            windowType: SearchableSelectableListWindow,
-        }
-    case SetTargetCollectionWindow:
-        log.Println("SetTargetCollectionWindow")
-        return Window{
-            name:       w,
-            windowType: ListSelectionWindow,
-        }
-    case FuzzySearchRootWindow:
-        return Window{
-            name:       w,
-            windowType: SearchableSelectableListWindow,
-        }
-    case FuzzySearchCurrentWindow:
-        return Window{
-            name:       w,
-            windowType: SearchableSelectableListWindow,
-        }
+	case SetTargetSubCollectionWindow:
+		return Window{
+			name:       w,
+			windowType: SearchableSelectableListWindow,
+		}
+	case SetTargetCollectionWindow:
+		log.Println("SetTargetCollectionWindow")
+		return Window{
+			name:       w,
+			windowType: ListSelectionWindow,
+		}
+	case FuzzySearchRootWindow:
+		return Window{
+			name:       w,
+			windowType: SearchableSelectableListWindow,
+		}
+	case FuzzySearchCurrentWindow:
+		return Window{
+			name:       w,
+			windowType: SearchableSelectableListWindow,
+		}
 	case CreateExportWindow:
 		return Window{
 			name:       w,
 			windowType: FormWindow,
 		}
-    case RunExportWindow:
-        return Window{
-            name:       w,
-            windowType: ListSelectionWindow,
-        }
+	case RunExportWindow:
+		return Window{
+			name:       w,
+			windowType: ListSelectionWindow,
+		}
 	default:
 		log.Fatalf("Unknown window name: %v", w.String())
 	}

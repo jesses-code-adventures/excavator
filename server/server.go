@@ -393,47 +393,47 @@ func (s *Server) GetExports() []core.SelectableListItem {
 		}
 		exports = append(exports, core.NewExport(id, name, outputDir, concrete))
 	}
-    return exports
+	return exports
 }
 
 func (s *Server) GetExport(id int) core.Export {
-    statement := `select name, output_dir, concrete from Export where id = ?`
-    row := s.Db.QueryRow(statement, id)
-    var name string
-    var outputDir string
-    var concrete bool
-    if err := row.Scan(&name, &outputDir, &concrete); err != nil {
-        log.Fatalf("Failed to scan row in getExport: %v", err)
-    }
-    return core.NewExport(id, name, outputDir, concrete)
+	statement := `select name, output_dir, concrete from Export where id = ?`
+	row := s.Db.QueryRow(statement, id)
+	var name string
+	var outputDir string
+	var concrete bool
+	if err := row.Scan(&name, &outputDir, &concrete); err != nil {
+		log.Fatalf("Failed to scan row in getExport: %v", err)
+	}
+	return core.NewExport(id, name, outputDir, concrete)
 }
 
 func (s *Server) ExportCollection(collectionId int, exportId int) {
-    export := s.GetExport(exportId)
-    tags := s.GetCollectionTags(collectionId)
-    var copyFn func(source string, destination string) error
-    if export.Description() == "concrete"{
-        copyFn = os.Link
-    } else {
-        copyFn = os.Symlink
-    }
-    for _, tag := range tags {
-        source := tag.FilePath
-        _, err := os.Stat(source)
-        if err != nil {
-            log.Fatalf("Source doesn't exist: %v", err)
-        }
-        dir := path.Join(export.Path(), export.Name(), tag.CollectionName, tag.SubCollection)
-        if _, err := os.Stat(dir); os.IsNotExist(err) {
-            os.MkdirAll(dir, 0755)
-        }
-        destination := path.Join(dir, path.Base(tag.FilePath)) // Todo: use name field from collection tag
-        if _, err := os.Stat(destination); os.IsNotExist(err) {
-            if err := copyFn(source, destination); err != nil {
-                log.Fatalf("Failed to create link: %v", err)
-            }
-        }
-    }
+	export := s.GetExport(exportId)
+	tags := s.GetCollectionTags(collectionId)
+	var copyFn func(source string, destination string) error
+	if export.Description() == "concrete" {
+		copyFn = os.Link
+	} else {
+		copyFn = os.Symlink
+	}
+	for _, tag := range tags {
+		source := tag.FilePath
+		_, err := os.Stat(source)
+		if err != nil {
+			log.Fatalf("Source doesn't exist: %v", err)
+		}
+		dir := path.Join(export.Path(), export.Name(), tag.CollectionName, tag.SubCollection)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			os.MkdirAll(dir, 0755)
+		}
+		destination := path.Join(dir, path.Base(tag.FilePath)) // Todo: use name field from collection tag
+		if _, err := os.Stat(destination); os.IsNotExist(err) {
+			if err := copyFn(source, destination); err != nil {
+				log.Fatalf("Failed to create link: %v", err)
+			}
+		}
+	}
 }
 
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
@@ -460,7 +460,6 @@ where ct.id = ?`
 	}
 	return tags
 }
-
 
 // Get collection tags associated with a directory
 func (s *Server) GetDirectoryTags(dir string) []core.CollectionTag {

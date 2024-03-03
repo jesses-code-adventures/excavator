@@ -45,7 +45,7 @@ var (
 			Border(lipgloss.HiddenBorder())
 	FocusedInput = lipgloss.NewStyle().
 			Width(100).
-            Foreground(Pink).
+			Foreground(Pink).
 			Border(lipgloss.HiddenBorder())
 		// Searchable list
 	SearchableListItemsStyle = lipgloss.NewStyle().

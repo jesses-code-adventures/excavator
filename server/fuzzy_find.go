@@ -2,10 +2,10 @@ package server
 
 import (
 	"log"
+	"path/filepath"
 	"strings"
-    "path/filepath"
 
-    "github.com/jesses-code-adventures/excavator/core"
+	"github.com/jesses-code-adventures/excavator/core"
 )
 
 func ContainsAllSubstrings(s1 string, s2 string) bool {
@@ -58,17 +58,17 @@ func (s *Server) FuzzyFind(search string, fromRoot bool) []core.SelectableListIt
 	// 	s.State.pushChoice(core.TaggedDirentry{Path: path, Tags: matchedTags, Dir: false})
 	// 	return nil
 	// })
-    if !strings.HasSuffix(dir, "/") {
-        dir = dir + "/"
-    }
-    globStr := dir + "*"
-    log.Println("globstr: ", globStr)
+	if !strings.HasSuffix(dir, "/") {
+		dir = dir + "/"
+	}
+	globStr := dir + "*"
+	log.Println("globstr: ", globStr)
 	matches, err := filepath.Glob(globStr)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
 	for _, match := range matches {
-        log.Println("match: ", match)
+		log.Println("match: ", match)
 		files = append(files, match)
 		// matchedTags := make([]core.CollectionTag, 0)
 		// for _, tag := range collectionTags {
