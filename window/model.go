@@ -424,6 +424,7 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.CreateQuickTag):
 		choice := m.Server.State.Choices[m.Cursor]
+        log.Println("creating quick tag for ", choice.Name())
 		if !choice.IsDir() {
 			m.Server.CreateQuickTag(choice.Name())
 		}
@@ -530,6 +531,22 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 			m.Server.CreateCollection(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
 		case "create tag":
 			m.Server.CreateTag(m.Server.State.Choices[m.Cursor].Name(), m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
+        case "create export":
+            if len(m.Form.Inputs) < 3 {
+                log.Println("not enough inputs for export")
+                return m, cmd
+            }
+            if m.Form.Inputs[0].Input.Value() == "" || m.Form.Inputs[1].Input.Value() == "" || m.Form.Inputs[2].Input.Value() == "" {
+                log.Println("please fill out all fields")
+                return m, cmd
+            }
+            var concrete bool
+            if strings.HasPrefix(m.Form.Inputs[2].Input.Value(), "t") || m.Form.Inputs[2].Input.Value() == "1" {
+                concrete = true
+            } else {
+                concrete = false
+            }
+            m.Server.CreateExport(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value(), concrete)
 		}
 		m, cmd = m.GoToMainWindow(msg, cmd)
 	}

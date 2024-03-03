@@ -213,7 +213,7 @@ func (s *Server) GetCollectionSubcollections() []core.SubCollection {
 	for rows.Next() {
 		var subCollection string
 		if err := rows.Scan(&subCollection); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in get collection subcollections: %v", err)
 		}
 		subCollections = append(subCollections, core.NewSubCollection(subCollection))
 	}
@@ -235,7 +235,7 @@ func (s *Server) SearchCollectionSubcollections(search string) []core.SubCollect
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in search collection subcollections: %v", err)
 		}
 		subCollection := core.NewSubCollection(name)
 		subCollections = append(subCollections, subCollection)
@@ -355,6 +355,26 @@ func (s *Server) CreateTag(filepath string, name string, subCollection string) {
 	s.UpdateChoices()
 }
 
+func (s *Server) CreateExport(name string, outputDir string, concrete bool) int {
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			panic(err)
+		}
+	}
+    if len(name) == 0 {
+        return 0
+    }
+	res, err := s.Db.Exec("insert or ignore into Export (user_id, name, output_dir, concrete) values (?, ?, ?, ?)", s.User.Id, name, outputDir, concrete)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in createTagInDb: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		log.Fatalf("Failed to get last insert ID: %v", err)
+	}
+	return int(id)
+}
+
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
 
 // Get collection tags associated with a directory
@@ -375,7 +395,7 @@ where t.file_path like ?`
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in getcollectiontags: %v", err)
 		}
 		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
 	}
@@ -415,7 +435,7 @@ where t.file_path like ?`
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in fuzzy find collection tags: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
 		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
@@ -442,7 +462,7 @@ where t.file_path like ?`
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
 		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in search collection tags: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
 		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
@@ -461,7 +481,7 @@ func (s *Server) GetUser(id int) core.User {
 	var selectedSubCollection string
 	var root string
 	if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
-		log.Fatalf("Failed to scan row: %v", err)
+		log.Fatalf("Failed to scan row in getuser: %v", err)
 	}
 	var selectedCollection *core.CollectionMetadata
 	if collectionId != nil && collectionName != nil && collectionDescription != nil {
@@ -504,7 +524,7 @@ func (s *Server) GetUsers(name *string) []core.User {
 		var selectedSubCollection string
 		var root string
 		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in getusers: %v", err)
 		}
 		var selectedCollection *core.CollectionMetadata
 		if collectionId != nil && collectionName != nil && collectionDescription != nil {
@@ -593,7 +613,7 @@ func (s *Server) GetCollections() []core.CollectionMetadata {
 		var name string
 		var description string
 		if err := rows.Scan(&id, &name, &description); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in getcollections: %v", err)
 		}
 		collection := core.NewCollection(id, name, description)
 		collections = append(collections, collection)
@@ -649,6 +669,9 @@ func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string
 
 // Add a CollectionTag to the database, handling creation of core tag if needed
 func (s *Server) CreateCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
+    if collectionId == 0 {
+        log.Fatal("Collection id is 0")
+    }
 	tagId := s.CreateTagInDb(filePath)
 	log.Printf("Tag id: %d", tagId)
 	s.AddTagToCollectionInDb(tagId, collectionId, name, subCollection)
@@ -720,7 +743,7 @@ order by ct.sub_collection asc, t.file_path asc`
 		var id int
 		var filePath, subCollection string
 		if err := rows.Scan(&id, &filePath, &subCollection); err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			log.Fatalf("Failed to scan row in getcollection: %v", err)
 		}
 		tags = append(tags, NewCollectionItem(filePath, subCollection))
 	}

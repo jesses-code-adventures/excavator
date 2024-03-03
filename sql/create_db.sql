@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS User (
     id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
-    auto_audition boolean default(0),
+    auto_audition number(1) default(0),
     root TEXT default(''),
     selected_collection INTEGER,
     selected_subcollection TEXT default(''),
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS Export (
     user_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     output_dir TEXT NOT NULL,
-    concrete boolean default(0),
+    concrete number(1) default(0),
     FOREIGN KEY (user_id) REFERENCES User(id)
 );
 

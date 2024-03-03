@@ -45,12 +45,16 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] press t to create a tag in the current target collection and target directory.
 - [x] press shift-T to create a tag in the current target collection where the tag name and directory is editable.
 - [x] press a to audition a sample you're hovering over.
+- [ ] press e to select an export to run using the current collection.
+- [x] press shift-E to create a new export.
 - [x] press shift-A to toggle auto-audition mode.
 - [x] press d to set the target subdirectory to the root
 - [x] press shift-D to change the target directory in the current collection. this should be a searchable list, and if enter is pressed with no matches it should create a new one.
 - [x] press shift-K to toggle showing collection tags for all samples
 - [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
-- [ ] press shift-E to export the current target collection using an export (should just replace the whole directory destructively at first).
+
+### todo
+- [ ] fix issue where fatal crash occurs if you try to tag a sample with no collection selected
 
 ### further extensions
 - [ ] ability to read in a session and create a collection of every sample that's referenced in the session.
