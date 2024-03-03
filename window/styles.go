@@ -1,4 +1,4 @@
-package ui
+package window
 
 import (
 	"github.com/charmbracelet/lipgloss"
@@ -39,19 +39,14 @@ var (
 		// Form
 	FormStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
-			Border(lipgloss.HiddenBorder()).
-			Margin(0, 0, 0)
+			Border(lipgloss.HiddenBorder())
 	UnfocusedInput = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Background(lipgloss.Color("236")).
 			Width(100).
-			Margin(1, 1).
 			Border(lipgloss.HiddenBorder())
 	FocusedInput = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Background(lipgloss.Color("236")).
 			Width(100).
-			Margin(1, 1)
+            Foreground(Pink).
+			Border(lipgloss.HiddenBorder())
 		// Searchable list
 	SearchableListItemsStyle = lipgloss.NewStyle().
 					Border(lipgloss.HiddenBorder())

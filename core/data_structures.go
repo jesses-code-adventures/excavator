@@ -10,20 +10,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
-// Different window types
-type WindowType int
-
-const (
-	DirectoryWalker WindowType = iota
-	FormWindow
-	ListSelectionWindow
-	SearchableSelectableListWindow
-)
-
-func (w WindowType) String() string {
-	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableList"}[w]
-}
-
 // A singular form input control
 type FormInput struct {
 	Name  string
@@ -48,12 +34,13 @@ type Form struct {
 
 // A form constructor
 func NewForm(title string, inputs []FormInput) Form {
-	return Form{
+    newForm :=Form{
 		Title:        title,
 		Inputs:       inputs,
 		Writing:      false,
 		FocusedInput: 0,
 	}
+	return newForm
 }
 
 //// Form implementations ////
@@ -112,6 +99,7 @@ type SelectableListItem interface {
 	Id() int
 	Name() string
 	Description() string
+	Path() string
 	IsDir() bool
 	IsFile() bool
 }
@@ -145,34 +133,38 @@ type CollectionTag struct {
 }
 
 // A directory entry with associated tags
-type TaggedDirentry struct {
-	Path string
-	Tags []CollectionTag
-	Dir  bool
+type TaggedDirEntry struct {
+	FilePath string
+	Tags     []CollectionTag
+	Dir      bool
 }
 
-func (d TaggedDirentry) Id() int {
+func (d TaggedDirEntry) Id() int {
 	return 0
 }
 
-func (d TaggedDirentry) Name() string {
-	return d.Path
+func (d TaggedDirEntry) Name() string {
+	return d.FilePath
 }
 
-func (d TaggedDirentry) Description() string {
+func (d TaggedDirEntry) Path() string {
+	return d.FilePath
+}
+
+func (d TaggedDirEntry) Description() string {
 	return d.DisplayTags()
 }
 
-func (d TaggedDirentry) IsDir() bool {
+func (d TaggedDirEntry) IsDir() bool {
 	return d.Dir
 }
 
-func (d TaggedDirentry) IsFile() bool {
+func (d TaggedDirEntry) IsFile() bool {
 	return !d.Dir
 }
 
 // A string representing the collection tags associated with a directory entry
-func (d TaggedDirentry) DisplayTags() string {
+func (d TaggedDirEntry) DisplayTags() string {
 	first := true
 	resp := ""
 	for _, tag := range d.Tags {
@@ -191,7 +183,7 @@ type User struct {
 	Id                  int
 	Name                string
 	AutoAudition        bool
-	TargetCollection    *Collection
+	TargetCollection    *CollectionMetadata
 	TargetSubCollection string
 	Root                string
 }
@@ -259,39 +251,43 @@ func (c *Config) GetDbPath() string {
 	return filepath.Join(c.Data, c.DbFileName)
 }
 
-// A Collection
-type Collection struct {
+// A CollectionMetadata
+type CollectionMetadata struct {
 	id          int
 	name        string
 	description string
 }
 
-func NewCollection(id int, name string, description string) Collection {
-	return Collection{id: id, name: name, description: description}
+func NewCollection(id int, name string, description string) CollectionMetadata {
+	return CollectionMetadata{id: id, name: name, description: description}
 }
 
 // Requirement for a listSelectionItem
-func (c Collection) Id() int {
+func (c CollectionMetadata) Id() int {
 	return c.id
 }
 
 // Requirement for a listSelectionItem
-func (c Collection) Name() string {
+func (c CollectionMetadata) Name() string {
 	return c.name
 }
 
+func (c CollectionMetadata) Path() string {
+	return ""
+}
+
 // Requirement for a listSelectionItem
-func (c Collection) Description() string {
+func (c CollectionMetadata) Description() string {
 	return c.description
 }
 
 // Requirement for a listSelectionItem
-func (c Collection) IsDir() bool {
+func (c CollectionMetadata) IsDir() bool {
 	return false
 }
 
 // Requirement for a listSelectionItem
-func (c Collection) IsFile() bool {
+func (c CollectionMetadata) IsFile() bool {
 	return false
 }
 
@@ -309,6 +305,10 @@ func (s SubCollection) Id() int {
 
 func (s SubCollection) Name() string {
 	return s.name
+}
+
+func (s SubCollection) Path() string {
+	return ""
 }
 
 func (s SubCollection) Description() string {

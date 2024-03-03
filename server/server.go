@@ -3,7 +3,8 @@ package server
 import (
 	"database/sql"
 	"flag"
-	"io/fs"
+
+	// "io/fs"
 	"log"
 	"math/rand"
 	"os"
@@ -73,7 +74,7 @@ func (n *State) UpdateChoices() {
 	if n.Dir != n.Root {
 		n.Choices = make([]core.SelectableListItem, 0)
 		dirEntries := n.ListDirEntries()
-		n.Choices = append(n.Choices, core.TaggedDirentry{Path: "..", Tags: make([]core.CollectionTag, 0), Dir: true})
+		n.Choices = append(n.Choices, core.TaggedDirEntry{FilePath: "..", Tags: make([]core.CollectionTag, 0), Dir: true})
 		n.Choices = append(n.Choices, dirEntries...)
 	} else {
 		n.Choices = n.ListDirEntries()
@@ -103,7 +104,6 @@ func (f *State) FilterDirEntries(entries []os.DirEntry) []os.DirEntry {
 // Standard function for getting the necessary files from a dir with their associated tags
 func (f *State) ListDirEntries() []core.SelectableListItem {
 	files, err := os.ReadDir(f.Dir)
-	log.Printf("current dir: %v", f.Dir)
 	if err != nil {
 		log.Fatalf("Failed to read samples directory: %v", err)
 	}
@@ -119,7 +119,7 @@ func (f *State) ListDirEntries() []core.SelectableListItem {
 				}
 			}
 		}
-		samples = append(samples, core.TaggedDirentry{Path: file.Name(), Tags: matchedTags, Dir: isDir})
+		samples = append(samples, core.TaggedDirEntry{FilePath: file.Name(), Tags: matchedTags, Dir: isDir})
 	}
 	return samples
 }
@@ -131,9 +131,7 @@ func (n *State) GetCurrentDirPath() string {
 
 // Change the current directory
 func (n *State) ChangeDir(dir string) {
-	log.Println("Changing to dir: ", dir)
 	n.Dir = filepath.Join(n.Dir, dir)
-	log.Println("Current dir: ", n.Dir)
 	n.UpdateChoices()
 }
 
@@ -329,7 +327,7 @@ func (s *Server) UpdateChoices() {
 }
 
 // Set the current user's target collection and update in db
-func (s *Server) UpdateTargetCollection(collection core.Collection) {
+func (s *Server) UpdateTargetCollection(collection core.CollectionMetadata) {
 	s.User.TargetCollection = &collection
 	s.UpdateSelectedCollectionInDb(collection.Id())
 	s.UpdateTargetSubCollection("")
@@ -355,64 +353,6 @@ func (s *Server) CreateQuickTag(filepath string) {
 func (s *Server) CreateTag(filepath string, name string, subCollection string) {
 	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), name, subCollection)
 	s.UpdateChoices()
-}
-
-func ContainsAllSubstrings(s1 string, s2 string) bool {
-	words := strings.Fields(s2)
-	s1 = strings.ToLower(s1)
-	s2 = strings.ToLower(s2)
-	for _, word := range words {
-		if !strings.Contains(s1, word) {
-			return false
-		}
-	}
-	return true
-}
-
-// Standard function for getting the necessary files from a dir with their associated tags
-func (s *Server) FuzzyFind(search string, fromRoot bool) []core.SelectableListItem {
-	log.Println("in server fuzzy search fn")
-	var dir string
-	var entries []os.DirEntry = make([]os.DirEntry, 0)
-	var files []fs.DirEntry
-	var samples []core.SelectableListItem
-	if len(search) == 0 {
-		return make([]core.SelectableListItem, 0)
-	}
-	if fromRoot {
-		dir = s.State.Root
-	} else {
-		dir = s.State.Dir
-	}
-	collectionTags := s.FuzzyFindCollectionTags(search)
-	log.Println("collection tags", collectionTags)
-	log.Println("searching for: ", search)
-	log.Println("dir: ", dir)
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !ContainsAllSubstrings(path, search) || strings.HasPrefix(path, ".") || strings.HasSuffix(path, ".asd") {
-			return nil
-		}
-		if (strings.HasSuffix(path, ".wav") || strings.HasSuffix(path, ".mp3") || strings.HasSuffix(path, ".flac")) && !d.IsDir() {
-			entries = append(entries, d)
-		}
-		files = append(files, d)
-		matchedTags := make([]core.CollectionTag, 0)
-		for _, tag := range collectionTags {
-			if strings.Contains(tag.FilePath, path) {
-				matchedTags = append(matchedTags, tag)
-			}
-		}
-		s.State.pushChoice(core.TaggedDirentry{Path: path, Tags: matchedTags, Dir: false})
-		return nil
-	})
-	if err != nil {
-		log.Fatalf("Failed to read samples directory: %v", err)
-	}
-	log.Println("files: ", len(files))
-	return samples
 }
 
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
@@ -523,7 +463,7 @@ func (s *Server) GetUser(id int) core.User {
 	if err := row.Scan(&name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 		log.Fatalf("Failed to scan row: %v", err)
 	}
-	var selectedCollection *core.Collection
+	var selectedCollection *core.CollectionMetadata
 	if collectionId != nil && collectionName != nil && collectionDescription != nil {
 		collection := core.NewCollection(*collectionId, *collectionName, *collectionDescription)
 		selectedCollection = &collection
@@ -566,7 +506,7 @@ func (s *Server) GetUsers(name *string) []core.User {
 		if err := rows.Scan(&id, &name, &collectionId, &collectionName, &collectionDescription, &autoAudition, &selectedSubCollection, &root); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
-		var selectedCollection *core.Collection
+		var selectedCollection *core.CollectionMetadata
 		if collectionId != nil && collectionName != nil && collectionDescription != nil {
 			collection := core.NewCollection(*collectionId, *collectionName, *collectionDescription)
 			selectedCollection = &collection
@@ -640,14 +580,14 @@ func (s *Server) CreateCollection(name string, description string) int {
 }
 
 // Get all collections for the current user
-func (s *Server) GetCollections() []core.Collection {
+func (s *Server) GetCollections() []core.CollectionMetadata {
 	statement := `select id, name, description from Collection where user_id = ?`
 	rows, err := s.Db.Query(statement, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollections: %v", err)
 	}
 	defer rows.Close()
-	collections := make([]core.Collection, 0)
+	collections := make([]core.CollectionMetadata, 0)
 	for rows.Next() {
 		var id int
 		var name string
@@ -719,4 +659,70 @@ func (s *Server) UpdateTargetSubCollectionInDb(subCollection string) {
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in updateSubCollectionInDb: %v", err)
 	}
+}
+
+type CollectionItem struct {
+	id            int
+	name          string
+	path          string
+	subCollection string
+}
+
+func NewCollectionItem(path string, subCollection string) CollectionItem {
+	name := filepath.Join("%s%s", subCollection, strings.Split(filepath.Base(path), ".")[0])
+	return CollectionItem{
+		id:            0,
+		name:          name,
+		path:          path,
+		subCollection: subCollection,
+	}
+}
+
+func (c CollectionItem) Id() int {
+	return c.id
+}
+
+func (c CollectionItem) Name() string {
+	return c.name
+}
+
+func (c CollectionItem) Path() string {
+    return c.path
+}
+
+func (c CollectionItem) Description() string {
+	return ""
+}
+
+func (c CollectionItem) IsDir() bool {
+	return false
+}
+
+func (c CollectionItem) IsFile() bool {
+	return true
+}
+
+func (s *Server) GetCollection(collectionId int) []core.SelectableListItem {
+	statement := `select ct.id, t.file_path, ct.sub_collection
+from CollectionTag ct
+left join Collection col
+on ct.collection_id = col.id
+left join Tag t on ct.tag_id = t.id
+where ct.collection_id like ?
+order by ct.sub_collection asc, t.file_path asc`
+	rows, err := s.Db.Query(statement, collectionId)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in getCollection: %v", err)
+	}
+	defer rows.Close()
+	tags := make([]core.SelectableListItem, 0)
+	for rows.Next() {
+		var id int
+		var filePath, subCollection string
+		if err := rows.Scan(&id, &filePath, &subCollection); err != nil {
+			log.Fatalf("Failed to scan row: %v", err)
+		}
+		tags = append(tags, NewCollectionItem(filePath, subCollection))
+	}
+	return tags
 }

@@ -47,6 +47,7 @@ type KeyMap struct {
 	SetTargetSubCollection     key.Binding
 	FuzzySearchFromRoot        key.Binding
 	ToggleShowCollections      key.Binding
+	CreateExport               key.Binding
 }
 
 // The actual help text
@@ -113,7 +114,7 @@ var DefaultKeyMap = KeyMap{
 	),
 	SetTargetCollection: key.NewBinding(
 		key.WithKeys("c"),
-		key.WithHelp("c", "select collection"),
+		key.WithHelp("c", "set target collection"),
 	),
 	ToggleAutoAudition: key.NewBinding(
 		key.WithKeys("A"),
@@ -142,5 +143,9 @@ var DefaultKeyMap = KeyMap{
 	ToggleShowCollections: key.NewBinding(
 		key.WithKeys("K"),
 		key.WithHelp("K", "show collections"),
+	),
+	CreateExport: key.NewBinding(
+		key.WithKeys("E"),
+		key.WithHelp("E", "create export"),
 	),
 }

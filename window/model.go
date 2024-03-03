@@ -1,4 +1,4 @@
-package ui
+package window
 
 import (
 	"fmt"
@@ -20,42 +20,18 @@ import (
 	"github.com/jesses-code-adventures/excavator/server"
 )
 
-func (m Model) FilterListItems() Model {
-	var resp []core.SelectableListItem
-	switch m.SearchableSelectableList.Title {
-	case "set target subcollection":
-		r := m.Server.SearchCollectionSubcollections(m.SearchableSelectableList.Search.Input.Value())
-		newArray := make([]core.SelectableListItem, 0)
-		for _, item := range r {
-			newArray = append(newArray, item)
-		}
-		resp = newArray
-		m.Server.State.Choices = resp
-	case "fuzzy search from root":
-		log.Println("performing fuzzy search")
-		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), true)
-	case "fuzzy search window":
-		log.Println("performing fuzzy search")
-		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), false)
-	}
-	return m
-}
-
 // A generic Model defining app behaviour in all states
 type Model struct {
 	Ready                    bool
 	Quitting                 bool
 	ShowCollections          bool
 	Cursor                   int
-	PrevCursor               int
-	ViewportHeight           int
-	ViewportWidth            int
 	Keys                     keymaps.KeyMap
 	KeyHack                  keymaps.KeymapHacks
 	Server                   *server.Server
-	Viewport                 viewport.Model
 	Help                     help.Model
-	WindowType               core.WindowType
+	Window                   Window
+	Viewport                 viewport.Model
 	Form                     core.Form
 	SelectableList           string
 	SearchableSelectableList core.SearchableSelectableList
@@ -70,7 +46,7 @@ func ExcavatorModel(server *server.Server) Model {
 		Server:          server,
 		Help:            help.New(),
 		Keys:            keymaps.DefaultKeyMap,
-		WindowType:      core.DirectoryWalker,
+		Window:          Home.Window(),
 	}
 }
 
@@ -106,11 +82,12 @@ func (m Model) GetStatusDisplay() string {
 	termWidth := m.Viewport.Width
 	msg := ""
 	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window: %v, num items: %v, descriptions: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, m.WindowType.String(), len(m.Server.State.Choices), m.ShowCollections)
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window type: %v, window name: %v, num items: %v, descriptions: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, m.Window.Type().String(), m.Window.Name(), len(m.Server.State.Choices), m.ShowCollections)
 	items := []StatusDisplayItem{
 		NewStatusDisplayItem("collection", m.Server.User.TargetCollection.Name()),
 		NewStatusDisplayItem("subcollection", m.Server.User.TargetSubCollection),
-		NewStatusDisplayItem("window", fmt.Sprintf("%v", m.WindowType.String())),
+		NewStatusDisplayItem("window type", fmt.Sprintf("%v", m.Window.Type().String())),
+		NewStatusDisplayItem("window name", fmt.Sprintf("%v", m.Window.Name())),
 		NewStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.Server.State.Choices))),
 		NewStatusDisplayItem("descriptions", fmt.Sprintf("%v", m.ShowCollections)),
 	}
@@ -143,53 +120,6 @@ func (m Model) FooterView() string {
 	return m.GetStatusDisplay() + "\n" + centeredHelpText
 }
 
-// Formview handler
-func (m Model) FormView() string {
-	s := ""
-	log.Println("got form ", m.Form)
-	for i, input := range m.Form.Inputs {
-		if m.Form.FocusedInput == i {
-			s += FocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
-		} else {
-			s += UnfocusedInput.Render(fmt.Sprintf("%v: %v\n", input.Name, input.Input.View()))
-		}
-	}
-	return s
-}
-
-// Standard content handler
-func (m Model) DirectoryView() string {
-	s := ""
-	for i, choice := range m.Server.State.Choices {
-		var newLine string
-		if m.Cursor == i {
-			cursor := ">"
-			newLine = fmt.Sprintf("%s %s", cursor, choice.Name())
-		} else {
-			newLine = fmt.Sprintf("  %s", choice.Name())
-		}
-		if len(newLine) > m.Viewport.Width {
-			newLine = newLine[:m.Viewport.Width-2]
-		}
-		if m.Cursor == i {
-			newLine = SelectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
-		} else {
-			if m.ShowCollections {
-				newLine = UnselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
-			} else {
-				newLine = UnselectedStyle.Render(newLine)
-			}
-		}
-		s += newLine
-	}
-	var searchInput string
-	if m.WindowType == core.SearchableSelectableListWindow {
-		searchInput = SearchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
-		return s + "\n" + searchInput
-	}
-	return s
-}
-
 // // Ui updating for window resize events
 func (m Model) HandleWindowResize(msg tea.WindowSizeMsg) Model {
 	headerHeight := lipgloss.Height(m.HeaderView())
@@ -197,20 +127,19 @@ func (m Model) HandleWindowResize(msg tea.WindowSizeMsg) Model {
 	searchInputHeight := 2 // Assuming the search input height is approximately 2 lines
 	verticalPadding := 2   // Adjust based on your app's padding around the viewport
 	// Calculate available height differently if in SearchableSelectableList mode
-	if m.WindowType == core.SearchableSelectableListWindow {
-		m.ViewportHeight = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
+	if m.Window.Type() == SearchableSelectableListWindow {
+		m.Viewport.Height = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
 	} else {
-		m.ViewportHeight = msg.Height - headerHeight - footerHeight - verticalPadding
+		m.Viewport.Height = msg.Height - headerHeight - footerHeight - verticalPadding
 	}
 	m.Viewport.Width = msg.Width
-	m.Viewport.Height = m.ViewportHeight
 	m.Ready = true
 	return m
 }
 
 // Handle viewport positioning
 func (m Model) EnsureCursorVerticallyCentered() viewport.Model {
-	if m.WindowType != core.DirectoryWalker {
+	if m.Window.Type() != DirectoryWalker {
 		m.Viewport.GotoTop()
 		return m.Viewport
 	}
@@ -228,22 +157,21 @@ func (m Model) EnsureCursorVerticallyCentered() viewport.Model {
 	return viewport
 }
 
-// Helper function to find the maximum of two integers
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // Set the content of the viewport based on the window type
 func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
-	switch m.WindowType {
-	case core.FormWindow:
-		m.Viewport.SetContent(m.FormView())
+	switch m.Window.Type() {
+	case FormWindow:
+		log.Println("setting viewport content for ", m.Form.Title)
+		m.Viewport.SetContent(FormWindow.FormView(m.Form))
 	default:
 		m.Viewport = m.EnsureCursorVerticallyCentered()
-		m.Viewport.SetContent(m.DirectoryView())
+		m.Viewport.SetContent(m.Window.Type().DirectoryView(
+			m.Server.State.Choices,
+			m.Cursor,
+			m.Viewport.Width,
+			m.ShowCollections,
+			m.SearchableSelectableList.Search.Input,
+		))
 	}
 	return m, cmd
 }
@@ -274,89 +202,120 @@ func (m Model) ClearModel() Model {
 // Standard "home" view
 func (m Model) GoToMainWindow(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 	m = m.ClearModel()
-	m.WindowType = core.DirectoryWalker
+	m.Window = Home.Window()
 	m.Server.UpdateChoices()
 	return m, cmd
 }
 
 // Individual logic handlers for each list - setting window type handled outside this function
-func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, title string) (Model, tea.Cmd) {
-	switch title {
-	case "set target subcollection":
+func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, tea.Cmd) {
+	switch window {
+	case SetTargetSubCollectionWindow:
 		subCollections := m.Server.GetCollectionSubcollections()
 		for _, subCollection := range subCollections {
 			m.Server.State.Choices = append(m.Server.State.Choices, subCollection)
 		}
-	case "select collection":
+	case SetTargetCollectionWindow:
 		collections := m.Server.GetCollections()
-		m.SelectableList = title
+        m.SelectableList = "set target collection"
 		for _, collection := range collections {
 			m.Server.State.Choices = append(m.Server.State.Choices, collection)
 		}
-	case "search for collection":
-		collections := m.Server.GetCollections()
-		m.SelectableList = title
-		for _, collection := range collections {
-			m.Server.State.Choices = append(m.Server.State.Choices, collection)
-		}
-	case "fuzzy search from root":
+	case FuzzySearchRootWindow:
 		files := m.Server.FuzzyFind("", true)
-		for _, subCollection := range files {
-			m.Server.State.Choices = append(m.Server.State.Choices, subCollection)
+		for _, file := range files {
+			m.Server.State.Choices = append(m.Server.State.Choices, file)
+		}
+	case FuzzySearchCurrentWindow:
+		files := m.Server.FuzzyFind("", false)
+		for _, file := range files {
+			m.Server.State.Choices = append(m.Server.State.Choices, file)
 		}
 	default:
 		log.Fatalf("Invalid searchable selectable list title")
 	}
-	m.SearchableSelectableList = core.NewSearchableList(title)
+	m.SearchableSelectableList = core.NewSearchableList(window.String())
 	return m, cmd
 }
 
-func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, title string) (Model, tea.Cmd) {
-	switch title {
-	case "new collection":
+func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, tea.Cmd) {
+	switch window {
+	case NewCollectionWindow:
 		m = m.ClearModel()
 		m.Form = core.GetNewCollectionForm()
-	case "create tag":
+	case CreateExportWindow:
+		m = m.ClearModel()
+		form := core.NewForm(window.String(), []core.FormInput{
+			core.NewFormInput("name"),
+			core.NewFormInput("output_dir"),
+			core.NewFormInput("concrete"),
+		})
+		m.Form = form
+	case NewTagWindow:
 		m.Form = core.GetCreateTagForm(path.Base(m.Server.State.Choices[m.Cursor].Name()), m.Server.User.TargetSubCollection)
 	}
 	return m, cmd
 }
 
 // Main handler to be called any time the window changes
-func (m Model) SetWindowType(msg tea.Msg, cmd tea.Cmd, windowType core.WindowType, title string) (Model, tea.Cmd) {
-	if m.WindowType == windowType && m.SearchableSelectableList.Title == title {
+func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, tea.Cmd) {
+    log.Printf("got window name %s", window.String())
+	if m.Window.Name() == window {
+        log.Println("going back to main window")
 		m, cmd = m.GoToMainWindow(msg, cmd)
 		return m, cmd
 	}
-	log.Println("got window type ", windowType.String())
-	switch windowType {
-	case core.DirectoryWalker:
-		m = m.ClearModel()
-		m, cmd = m.GoToMainWindow(msg, cmd)
-	case core.FormWindow:
-		if title == "" {
-			log.Fatalf("Title required for forms")
-		}
-		m, cmd = m.HandleForm(msg, cmd, title)
-	case core.ListSelectionWindow:
-		m = m.ClearModel()
-		if title == "" {
-			log.Fatalf("Title required for lists")
-		}
-		m, cmd = m.HandleTitledList(msg, cmd, title)
-	case core.SearchableSelectableListWindow:
-		m = m.ClearModel()
-		if title == "" {
-			log.Fatalf("Title required for lists")
-		}
-		m, cmd = m.HandleTitledList(msg, cmd, title)
-	default:
-		log.Fatalf("Invalid window type")
+	m = m.ClearModel()
+	m.Window = window.Window()
+    log.Println("have set module window type to ", m.Window.Type())
+	switch m.Window.Type() {
+	case FormWindow:
+		m, cmd = m.HandleForm(msg, cmd, window)
+    case SearchableSelectableListWindow, ListSelectionWindow:
+        log.Println("going to window ", window)
+		m, cmd = m.HandleTitledList(msg, cmd, m.Window.Name())
 	}
-	m.WindowType = windowType
 	m.Cursor = 0
 	return m, cmd
 }
+
+// // Main handler to be called any time the window changes
+// func (m Model) SetWindowType(msg tea.Msg, cmd tea.Cmd, windowType WindowType, title string) (Model, tea.Cmd) {
+// 	if m.Window.Type() == windowType && m.SearchableSelectableList.Title == title {
+// 		m, cmd = m.GoToMainWindow(msg, cmd)
+// 		return m, cmd
+// 	}
+// 	switch windowType {
+// 	case DirectoryWalker:
+// 		m = m.ClearModel()
+// 		m, cmd = m.GoToMainWindow(msg, cmd)
+// 	case FormWindow:
+// 		if title == "" {
+// 			log.Fatalf("Title required for forms")
+// 		}
+// 		m, cmd = m.HandleForm(msg, cmd, title)
+// 	case ListSelectionWindow:
+// 		m = m.ClearModel()
+// 		if title == "" {
+// 			log.Fatalf("Title required for lists")
+// 		}
+// 		m, cmd = m.HandleTitledList(msg, cmd, title)
+// 	case SearchableSelectableListWindow:
+// 		m = m.ClearModel()
+// 		if title == "" {
+// 			log.Fatalf("Title required for lists")
+// 		}
+// 		m, cmd = m.HandleTitledList(msg, cmd, title)
+// 	default:
+// 		log.Fatalf("Invalid window type")
+// 	}
+//     log.Println("setting window type to ", windowType)
+// 	// m.Window.SetType(windowType)
+//     m.Window = NewWindow(windowType)
+//     log.Println("window type is now ", m.Window.Type())
+// 	m.Cursor = 0
+// 	return m, cmd
+// }
 
 // Audition the file under the cursor
 func (m Model) AuditionCurrentlySelectedFile() {
@@ -450,15 +409,17 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 	case key.Matches(msg, m.Keys.ToggleShowCollections):
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.NewCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "new collection")
+		m, cmd = m.SetWindow(msg, cmd, NewCollectionWindow)
+	case key.Matches(msg, m.Keys.CreateExport):
+		m, cmd = m.SetWindow(msg, cmd, CreateExportWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "set target subcollection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetSubCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "fuzzy search from root")
+		m, cmd = m.SetWindow(msg, cmd, FuzzySearchRootWindow)
 	case key.Matches(msg, m.Keys.SetTargetCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.ListSelectionWindow, "search for collection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetCollectionWindow)
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.CreateQuickTag):
@@ -468,7 +429,7 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 		}
 		m.Server.UpdateChoices()
 	case key.Matches(msg, m.Keys.CreateTag):
-		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "create tag")
+		m, cmd = m.SetWindow(msg, cmd, NewTagWindow)
 	default:
 		switch msg.String() {
 		case "g":
@@ -491,21 +452,22 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.NewCollection):
 		m.Form = core.GetNewCollectionForm()
-		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
+		m, cmd = m.SetWindow(msg, cmd, NewCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "set target subcollection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetSubCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.FuzzySearchFromRoot):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "fuzzy search from root")
+		m, cmd = m.SetWindow(msg, cmd, FuzzySearchRootWindow)
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):
+        log.Println("handling selectable list enter for ", m.SelectableList)
 		switch m.SelectableList {
-		case "search for collection":
-			if collection, ok := m.Server.State.Choices[m.Cursor].(core.Collection); ok {
+		case "set target collection":
+			if collection, ok := m.Server.State.Choices[m.Cursor].(core.CollectionMetadata); ok {
 				m.Server.UpdateTargetCollection(collection)
 				m, cmd = m.GoToMainWindow(msg, cmd)
 			} else {
@@ -531,16 +493,16 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 	switch {
 	case key.Matches(msg, m.Keys.Up):
 		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
-		m.Form.FocusedInput++
-		if m.Form.FocusedInput >= len(m.Form.Inputs) {
-			m.Form.FocusedInput = 0
+		m.Form.FocusedInput--
+		if m.Form.FocusedInput < 0 {
+			m.Form.FocusedInput = len(m.Form.Inputs) - 1
 		}
 		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
 	case key.Matches(msg, m.Keys.Down):
 		m.Form.Inputs[m.Form.FocusedInput].Input.Blur()
-		m.Form.FocusedInput--
-		if m.Form.FocusedInput < 0 {
-			m.Form.FocusedInput = len(m.Form.Inputs) - 1
+		m.Form.FocusedInput++
+		if m.Form.FocusedInput > len(m.Form.Inputs)-1 {
+			m.Form.FocusedInput = 0
 		}
 		m.Form.Inputs[m.Form.FocusedInput].Input.Focus()
 	case key.Matches(msg, m.Keys.InsertMode):
@@ -552,8 +514,7 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
-		// m, cmd = m.handleListSelectionKey(msg, cmd)
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetCollectionWindow)
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):
@@ -570,11 +531,30 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 		case "create tag":
 			m.Server.CreateTag(m.Server.State.Choices[m.Cursor].Name(), m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
 		}
-		// case "set target subcollection":
-		// 	m.server.updateTargetSubCollection(m.form.inputs[0].input.Value())
 		m, cmd = m.GoToMainWindow(msg, cmd)
 	}
 	return m, cmd
+}
+
+func (m Model) FilterListItems() Model {
+	var resp []core.SelectableListItem
+	switch m.SearchableSelectableList.Title {
+	case "set target subcollection":
+		r := m.Server.SearchCollectionSubcollections(m.SearchableSelectableList.Search.Input.Value())
+		newArray := make([]core.SelectableListItem, 0)
+		for _, item := range r {
+			newArray = append(newArray, item)
+		}
+		resp = newArray
+		m.Server.State.Choices = resp
+	case "fuzzy search from root":
+		log.Println("performing fuzzy search")
+		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), true)
+	case "fuzzy search window":
+		log.Println("performing fuzzy search")
+		m.Server.FuzzyFind(m.SearchableSelectableList.Search.Input.Value(), false)
+	}
+	return m
 }
 
 // Form writing
@@ -582,7 +562,7 @@ func (m Model) HandleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd
 	switch {
 	case key.Matches(msg, m.Keys.Quit):
 		m.Form.Writing = false
-		if m.WindowType == core.SearchableSelectableListWindow {
+		if m.Window.Type() == SearchableSelectableListWindow {
 			m.SearchableSelectableList.Search.Input.Blur()
 			m = m.FilterListItems()
 			log.Printf("filtered items in form writing key quit %v", m.Server.State.Choices)
@@ -592,7 +572,7 @@ func (m Model) HandleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd
 		}
 	case key.Matches(msg, m.Keys.Enter):
 		m.Form.Writing = false
-		if m.WindowType == core.SearchableSelectableListWindow {
+		if m.Window.Type() == SearchableSelectableListWindow {
 			m.SearchableSelectableList.Search.Input.Blur()
 			m = m.FilterListItems()
 			log.Printf("filtered items in form writing key enter %v", m.Server.State.Choices)
@@ -602,7 +582,7 @@ func (m Model) HandleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd
 		}
 	default:
 		var newInput textinput.Model
-		if m.WindowType == core.SearchableSelectableListWindow {
+		if m.Window.Type() == SearchableSelectableListWindow {
 			newInput, cmd = m.SearchableSelectableList.Search.Input.Update(msg)
 			m.SearchableSelectableList.Search.Input = newInput
 			m.SearchableSelectableList.Search.Input.Focus()
@@ -630,14 +610,14 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.NewCollection):
 		m.Form = core.GetNewCollectionForm()
-		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
+		m, cmd = m.SetWindow(msg, cmd, NewCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
 		m.Form = core.GetTargetSubCollectionForm()
-		m, cmd = m.SetWindowType(msg, cmd, core.FormWindow, "")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetSubCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.SetTargetCollection):
-		m, cmd = m.SetWindowType(msg, cmd, core.SearchableSelectableListWindow, "search for collection")
+		m, cmd = m.SetWindow(msg, cmd, SetTargetCollectionWindow)
 	case key.Matches(msg, m.Keys.InsertMode) || key.Matches(msg, m.Keys.SearchBuf):
 		m.SearchableSelectableList.Search.Input.Focus()
 		m.Form.Writing = true
@@ -645,22 +625,22 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):
 		value := m.SearchableSelectableList.Search.Input.Value()
-		switch m.SearchableSelectableList.Title {
-		case "fuzzy search from root":
+		switch m.Window.Name() {
+		case FuzzySearchRootWindow:
 			if value == "" {
 				return m, cmd
 			}
 			m.Cursor = 0
 			m.Server.FuzzyFind(value, true)
 			return m, cmd
-		case "fuzzy search window":
+		case FuzzySearchCurrentWindow:
 			if value == "" {
 				return m, cmd
 			}
 			m.Cursor = 0
 			m.Server.FuzzyFind(value, false)
 			return m, cmd
-		case "set target subcollection":
+		case SetTargetSubCollectionWindow:
 			if len(m.Server.State.Choices) == 0 && len(value) > 0 {
 				m.Server.UpdateTargetSubCollection(value)
 			} else {
@@ -696,17 +676,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m = m.HandleWindowResize(msg)
 	case tea.KeyMsg:
-		switch m.WindowType {
-		case core.FormWindow:
+		switch m.Window.Type() {
+		case FormWindow:
 			m, cmd = m.HandleFormKey(msg, cmd)
-		case core.ListSelectionWindow:
+		case ListSelectionWindow:
 			m, cmd = m.HandleListSelectionKey(msg, cmd)
-		case core.DirectoryWalker:
+		case DirectoryWalker:
 			m, cmd = m.HandleDirectoryKey(msg, cmd)
 			if m.Quitting {
 				return m, tea.Quit
 			}
-		case core.SearchableSelectableListWindow:
+		case SearchableSelectableListWindow:
 			m, cmd = m.HandleSearchableListKey(msg, cmd)
 		}
 		m.KeyHack.UpdateLastKey(msg.String())

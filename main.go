@@ -8,7 +8,7 @@ import (
 	"github.com/jesses-code-adventures/excavator/audio"
 	"github.com/jesses-code-adventures/excavator/core"
 	"github.com/jesses-code-adventures/excavator/server"
-	"github.com/jesses-code-adventures/excavator/ui"
+	"github.com/jesses-code-adventures/excavator/window"
 
 	// Frontend
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,7 +17,7 @@ import (
 // ////////////////////// APP ////////////////////////
 type App struct {
 	server         *server.Server
-	bubbleTeaModel ui.Model
+	bubbleTeaModel window.Model
 	logFile        *os.File
 }
 
@@ -33,7 +33,7 @@ func NewApp(cliFlags *server.Flags) App {
 	server := server.NewServer(audioPlayer, cliFlags)
 	return App{
 		server:         server,
-		bubbleTeaModel: ui.ExcavatorModel(server),
+		bubbleTeaModel: window.ExcavatorModel(server),
 		logFile:        f,
 	}
 }
@@ -45,6 +45,7 @@ func main() {
 	logFilePath := filepath.Join(cliFlags.Data, cliFlags.LogFile)
 	if cliFlags.Watch {
 		core.Watch(logFilePath, 10)
+		select {}
 	} else {
 		app := NewApp(cliFlags)
 		defer app.logFile.Close()
