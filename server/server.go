@@ -302,7 +302,7 @@ func NewServer(audioPlayer *audio.Player, flags *Flags) *Server {
 	}
 	s.User = s.HandleUserArg(&flags.User)
 	s = *s.HandleRootConstruction(config)
-	navState := NewNavState(config.Root, config.Root, s.GetCollectionTags)
+	navState := NewNavState(config.Root, config.Root, s.GetDirectoryTags)
 	s.State = navState
 	s.State.UpdateChoices()
 	return &s
@@ -361,9 +361,9 @@ func (s *Server) CreateExport(name string, outputDir string, concrete bool) int 
 			panic(err)
 		}
 	}
-    if len(name) == 0 {
-        return 0
-    }
+	if len(name) == 0 {
+		return 0
+	}
 	res, err := s.Db.Exec("insert or ignore into Export (user_id, name, output_dir, concrete) values (?, ?, ?, ?)", s.User.Id, name, outputDir, concrete)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in createTagInDb: %v", err)
@@ -375,10 +375,95 @@ func (s *Server) CreateExport(name string, outputDir string, concrete bool) int 
 	return int(id)
 }
 
+func (s *Server) GetExports() []core.SelectableListItem {
+	statement := `select id, name, output_dir, concrete from Export where user_id = ? order by name desc`
+	rows, err := s.Db.Query(statement, s.User.Id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in getExports: %v", err)
+	}
+	defer rows.Close()
+	exports := make([]core.SelectableListItem, 0)
+	for rows.Next() {
+		var id int
+		var name string
+		var outputDir string
+		var concrete bool
+		if err := rows.Scan(&id, &name, &outputDir, &concrete); err != nil {
+			log.Fatalf("Failed to scan row in getExports: %v", err)
+		}
+		exports = append(exports, core.NewExport(id, name, outputDir, concrete))
+	}
+    return exports
+}
+
+func (s *Server) GetExport(id int) core.Export {
+    statement := `select name, output_dir, concrete from Export where id = ?`
+    row := s.Db.QueryRow(statement, id)
+    var name string
+    var outputDir string
+    var concrete bool
+    if err := row.Scan(&name, &outputDir, &concrete); err != nil {
+        log.Fatalf("Failed to scan row in getExport: %v", err)
+    }
+    return core.NewExport(id, name, outputDir, concrete)
+}
+
+func (s *Server) ExportCollection(collectionId int, exportId int) {
+    export := s.GetExport(exportId)
+    tags := s.GetCollectionTags(collectionId)
+    var copyFn func(source string, destination string) error
+    if export.Description() == "concrete"{
+        copyFn = os.Link
+    } else {
+        copyFn = os.Symlink
+    }
+    for _, tag := range tags {
+        source := tag.FilePath
+        _, err := os.Stat(source)
+        if err != nil {
+            log.Fatalf("Source doesn't exist: %v", err)
+        }
+        dir := path.Join(export.Path(), export.Name(), tag.CollectionName, tag.SubCollection)
+        if _, err := os.Stat(dir); os.IsNotExist(err) {
+            os.MkdirAll(dir, 0755)
+        }
+        destination := path.Join(dir, path.Base(tag.FilePath)) // Todo: use name field from collection tag
+        if _, err := os.Stat(destination); os.IsNotExist(err) {
+            if err := copyFn(source, destination); err != nil {
+                log.Fatalf("Failed to create link: %v", err)
+            }
+        }
+    }
+}
+
 // ////////////////////// DATABASE ENDPOINTS ////////////////////////
+// Get collection tags associated with a directory
+func (s *Server) GetCollectionTags(id int) []core.CollectionTag {
+	statement := `select t.file_path, col.name, ct.sub_collection
+from CollectionTag ct
+left join Collection col
+on ct.collection_id = col.id
+left join Tag t on ct.tag_id = t.id
+where ct.id = ?`
+	rows, err := s.Db.Query(statement, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement: %v", err)
+	}
+	defer rows.Close()
+	tags := make([]core.CollectionTag, 0)
+	for rows.Next() {
+		var filePath, collectionName, subCollection string
+		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
+			log.Fatalf("Failed to scan row in getcollectiontags: %v", err)
+		}
+		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+	}
+	return tags
+}
+
 
 // Get collection tags associated with a directory
-func (s *Server) GetCollectionTags(dir string) []core.CollectionTag {
+func (s *Server) GetDirectoryTags(dir string) []core.CollectionTag {
 	statement := `select t.file_path, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
@@ -669,9 +754,9 @@ func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string
 
 // Add a CollectionTag to the database, handling creation of core tag if needed
 func (s *Server) CreateCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
-    if collectionId == 0 {
-        log.Fatal("Collection id is 0")
-    }
+	if collectionId == 0 {
+		log.Fatal("Collection id is 0")
+	}
 	tagId := s.CreateTagInDb(filePath)
 	log.Printf("Tag id: %d", tagId)
 	s.AddTagToCollectionInDb(tagId, collectionId, name, subCollection)
@@ -710,7 +795,7 @@ func (c CollectionItem) Name() string {
 }
 
 func (c CollectionItem) Path() string {
-    return c.path
+	return c.path
 }
 
 func (c CollectionItem) Description() string {

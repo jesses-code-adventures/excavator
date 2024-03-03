@@ -1,3 +1,6 @@
 logfile
 .env
+*.DS_Store
+*.mp3
+*.wav
 

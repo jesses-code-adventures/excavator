@@ -322,3 +322,42 @@ func (s SubCollection) IsDir() bool {
 func (s SubCollection) IsFile() bool {
 	return false
 }
+
+type Export struct {
+	id        int
+	name      string
+	outputDir string
+	concrete  bool
+}
+
+func NewExport(id int, name string, outputDir string, concrete bool) Export {
+    return Export{id: id, name: name, outputDir: outputDir, concrete: concrete}
+}
+
+func (e Export) Id() int {
+    return e.id
+}
+
+func (e Export) IsDir() bool {
+    return true
+}
+
+func (e Export) IsFile() bool {
+    return false
+}
+
+func (e Export) Name() string {
+    return e.name
+}
+
+func (e Export) Path() string {
+    return e.outputDir
+}
+
+func (e Export) Description() string {
+    if e.concrete {
+        return "concrete"
+    } else {
+        return "abstract"
+    }
+}

@@ -48,11 +48,12 @@ type KeyMap struct {
 	FuzzySearchFromRoot        key.Binding
 	ToggleShowCollections      key.Binding
 	CreateExport               key.Binding
+	RunExport                  key.Binding
 }
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.SearchBuf, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag}
+	return []key.Binding{k.Quit, k.Audition, k.SearchBuf, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag, k.CreateExport, k.RunExport}
 }
 
 // Empty because not using
@@ -147,5 +148,9 @@ var DefaultKeyMap = KeyMap{
 	CreateExport: key.NewBinding(
 		key.WithKeys("E"),
 		key.WithHelp("E", "create export"),
+	),
+	RunExport: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "run export"),
 	),
 }

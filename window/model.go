@@ -217,7 +217,7 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		}
 	case SetTargetCollectionWindow:
 		collections := m.Server.GetCollections()
-        m.SelectableList = "set target collection"
+		m.SelectableList = window.String()
 		for _, collection := range collections {
 			m.Server.State.Choices = append(m.Server.State.Choices, collection)
 		}
@@ -231,6 +231,12 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		for _, file := range files {
 			m.Server.State.Choices = append(m.Server.State.Choices, file)
 		}
+	case RunExportWindow:
+		exports := m.Server.GetExports()
+		for _, export := range exports {
+			m.Server.State.Choices = append(m.Server.State.Choices, export)
+		}
+		m.SelectableList = window.String()
 	default:
 		log.Fatalf("Invalid searchable selectable list title")
 	}
@@ -259,20 +265,20 @@ func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, t
 
 // Main handler to be called any time the window changes
 func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, tea.Cmd) {
-    log.Printf("got window name %s", window.String())
+	log.Printf("got window name %s", window.String())
 	if m.Window.Name() == window {
-        log.Println("going back to main window")
+		log.Println("going back to main window")
 		m, cmd = m.GoToMainWindow(msg, cmd)
 		return m, cmd
 	}
 	m = m.ClearModel()
 	m.Window = window.Window()
-    log.Println("have set module window type to ", m.Window.Type())
+	log.Println("have set module window type to ", m.Window.Type())
 	switch m.Window.Type() {
 	case FormWindow:
 		m, cmd = m.HandleForm(msg, cmd, window)
-    case SearchableSelectableListWindow, ListSelectionWindow:
-        log.Println("going to window ", window)
+	case SearchableSelectableListWindow, ListSelectionWindow:
+		log.Println("going to window ", window)
 		m, cmd = m.HandleTitledList(msg, cmd, m.Window.Name())
 	}
 	m.Cursor = 0
@@ -412,6 +418,8 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 		m, cmd = m.SetWindow(msg, cmd, NewCollectionWindow)
 	case key.Matches(msg, m.Keys.CreateExport):
 		m, cmd = m.SetWindow(msg, cmd, CreateExportWindow)
+	case key.Matches(msg, m.Keys.RunExport):
+		m, cmd = m.SetWindow(msg, cmd, RunExportWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollection):
 		m, cmd = m.SetWindow(msg, cmd, SetTargetSubCollectionWindow)
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
@@ -424,7 +432,7 @@ func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) 
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.CreateQuickTag):
 		choice := m.Server.State.Choices[m.Cursor]
-        log.Println("creating quick tag for ", choice.Name())
+		log.Println("creating quick tag for ", choice.Name())
 		if !choice.IsDir() {
 			m.Server.CreateQuickTag(choice.Name())
 		}
@@ -465,12 +473,18 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):
-        log.Println("handling selectable list enter for ", m.SelectableList)
-		switch m.SelectableList {
-		case "set target collection":
+		log.Println("handling selectable list enter for ", m.SelectableList)
+		switch m.Window.Name() {
+		case SetTargetCollectionWindow:
 			if collection, ok := m.Server.State.Choices[m.Cursor].(core.CollectionMetadata); ok {
 				m.Server.UpdateTargetCollection(collection)
 				m, cmd = m.GoToMainWindow(msg, cmd)
+			} else {
+				log.Fatalf("Invalid list selection item type")
+			}
+		case RunExportWindow:
+			if export, ok := m.Server.State.Choices[m.Cursor].(core.Export); ok {
+				m.Server.ExportCollection(m.Server.User.TargetCollection.Id(), export.Id())
 			} else {
 				log.Fatalf("Invalid list selection item type")
 			}
@@ -531,22 +545,22 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 			m.Server.CreateCollection(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
 		case "create tag":
 			m.Server.CreateTag(m.Server.State.Choices[m.Cursor].Name(), m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value())
-        case "create export":
-            if len(m.Form.Inputs) < 3 {
-                log.Println("not enough inputs for export")
-                return m, cmd
-            }
-            if m.Form.Inputs[0].Input.Value() == "" || m.Form.Inputs[1].Input.Value() == "" || m.Form.Inputs[2].Input.Value() == "" {
-                log.Println("please fill out all fields")
-                return m, cmd
-            }
-            var concrete bool
-            if strings.HasPrefix(m.Form.Inputs[2].Input.Value(), "t") || m.Form.Inputs[2].Input.Value() == "1" {
-                concrete = true
-            } else {
-                concrete = false
-            }
-            m.Server.CreateExport(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value(), concrete)
+		case "create export":
+			if len(m.Form.Inputs) < 3 {
+				log.Println("not enough inputs for export")
+				return m, cmd
+			}
+			if m.Form.Inputs[0].Input.Value() == "" || m.Form.Inputs[1].Input.Value() == "" || m.Form.Inputs[2].Input.Value() == "" {
+				log.Println("please fill out all fields")
+				return m, cmd
+			}
+			var concrete bool
+			if strings.HasPrefix(m.Form.Inputs[2].Input.Value(), "t") || m.Form.Inputs[2].Input.Value() == "1" {
+				concrete = true
+			} else {
+				concrete = false
+			}
+			m.Server.CreateExport(m.Form.Inputs[0].Input.Value(), m.Form.Inputs[1].Input.Value(), concrete)
 		}
 		m, cmd = m.GoToMainWindow(msg, cmd)
 	}

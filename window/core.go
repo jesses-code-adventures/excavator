@@ -34,10 +34,11 @@ const (
 	FuzzySearchRootWindow
 	FuzzySearchCurrentWindow
 	CreateExportWindow
+    RunExportWindow
 )
 
 func (w WindowName) String() string {
-	return [...]string{"home window", "new collection", "create tag", "set target subcollection", "set target collection", "fuzzy search from root", "fuzzy search window", "create export"}[w]
+	return [...]string{"home window", "new collection", "create tag", "set target subcollection", "set target collection", "fuzzy search from root", "fuzzy search window", "create export", "run export"}[w]
 }
 
 func (w WindowName) Window() Window {
@@ -83,6 +84,11 @@ func (w WindowName) Window() Window {
 			name:       w,
 			windowType: FormWindow,
 		}
+    case RunExportWindow:
+        return Window{
+            name:       w,
+            windowType: ListSelectionWindow,
+        }
 	default:
 		log.Fatalf("Unknown window name: %v", w.String())
 	}
