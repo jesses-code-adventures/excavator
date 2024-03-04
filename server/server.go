@@ -564,7 +564,7 @@ func (s *Server) FuzzyFindCollectionTags(search string) []core.CollectionTag {
 		}
 		search = searchBuilder
 	}
-	statement := `select t.file_path, col.name, ct.sub_collection
+	statement := `select t.file_path, ct.id, col.name, ct.sub_collection
 from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
@@ -576,14 +576,14 @@ where t.file_path like ?`
 	}
 	defer rows.Close()
 	tags := make([]core.CollectionTag, 0)
-	log.Println("collection tags")
 	for rows.Next() {
 		var filePath, collectionName, subCollection string
-		if err := rows.Scan(&filePath, &collectionName, &subCollection); err != nil {
+		var id int
+		if err := rows.Scan(&filePath, &id, &collectionName, &subCollection); err != nil {
 			log.Fatalf("Failed to scan row in fuzzy find collection tags: %v", err)
 		}
 		log.Printf("filepath: %s, collection name: %s, subcollection: %s", filePath, collectionName, subCollection)
-		tags = append(tags, core.CollectionTag{FilePath: filePath, CollectionName: collectionName, SubCollection: subCollection})
+		tags = append(tags, core.NewCollectionTag(id, path.Base(filePath), filePath, collectionName, subCollection))
 	}
 	return tags
 }
@@ -768,6 +768,8 @@ func (s *Server) CreateCollection(name string, description string) int {
 	if err != nil {
 		log.Fatalf("Failed to get last insert ID: %v", err)
 	}
+	s.UpdateSelectedCollectionInDb(int(id))
+	s.UpdateTargetCollection(core.NewCollection(int(id), name, description))
 	return int(id)
 }
 

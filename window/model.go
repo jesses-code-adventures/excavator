@@ -97,14 +97,11 @@ func (m Model) GetStatusDisplay() string {
 	termWidth := m.Viewport.Width
 	msg := ""
 	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, window type: %v, window name: %v, num items: %v, descriptions: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, m.Window.Type().String(), m.Window.Name(), len(m.Server.State.Choices), m.ShowCollections)
+	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, items: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, len(m.Server.State.Choices))
 	items := []StatusDisplayItem{
 		NewStatusDisplayItem("collection", m.Server.User.TargetCollection.Name()),
 		NewStatusDisplayItem("subcollection", m.Server.User.TargetSubCollection),
-		NewStatusDisplayItem("window type", fmt.Sprintf("%v", m.Window.Type().String())),
-		NewStatusDisplayItem("window name", fmt.Sprintf("%v", m.Window.Name())),
-		NewStatusDisplayItem("num items", fmt.Sprintf("%v", len(m.Server.State.Choices))),
-		NewStatusDisplayItem("descriptions", fmt.Sprintf("%v", m.ShowCollections)),
+		NewStatusDisplayItem("items", fmt.Sprintf("%v", len(m.Server.State.Choices))),
 	}
 	for i, item := range items {
 		msg += item.View()
@@ -276,7 +273,10 @@ func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, t
 		})
 		m.Form = form
 	case NewTagWindow:
-		m.Form = core.GetCreateTagForm(path.Base(m.Server.State.Choices[m.Cursor].Name()), m.Server.User.TargetSubCollection)
+		fp := m.Server.State.Choices[m.Cursor].Path()
+		name := path.Base(fp)
+		log.Printf("choices: %v\ncursor: %v\nfilepath: %v\nname: %v", len(m.Server.State.Choices), m.Cursor, fp, name)
+		m.Form = core.GetCreateTagForm(name, m.Server.User.TargetSubCollection)
 	}
 	return m, cmd
 }
@@ -287,7 +287,6 @@ func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, te
 		m, cmd = m.GoToHome(msg, cmd)
 		return m, cmd
 	}
-	m = m.ClearModel()
 	m.Window = window.Window()
 	switch m.Window.Type() {
 	case PreViewport:
@@ -407,15 +406,6 @@ func (m Model) HandleWindowChangeKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cm
 		m, cmd = m.SetWindow(msg, cmd, NewTagWindow)
 	}
 	return m, cmd
-}
-
-func (m Model) IsWindowKeyMsg(msg tea.KeyMsg) bool {
-	switch {
-	case key.Matches(msg, m.Keys.FuzzySearchFromRoot), key.Matches(msg, m.Keys.FuzzySearchFromCurrent), key.Matches(msg, m.Keys.BrowseTargetCollection), key.Matches(msg, m.Keys.SetTargetCollection), key.Matches(msg, m.Keys.SetTargetSubCollection), key.Matches(msg, m.Keys.SetTargetSubCollectionRoot), key.Matches(msg, m.Keys.NewCollection), key.Matches(msg, m.Keys.CreateExport), key.Matches(msg, m.Keys.RunExport), key.Matches(msg, m.Keys.CreateTag):
-		return true
-	default:
-		return false
-	}
 }
 
 // List selection navigation
@@ -570,6 +560,20 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		m.SearchableSelectableList.Search.Input.Focus()
 		m.Cursor = len(m.Server.State.Choices) - 1
 		m.Form.Writing = true
+	case key.Matches(msg, m.Keys.CreateQuickTag):
+		if len(m.Server.State.Choices) == 0 {
+			return m, cmd
+		}
+		choice := m.Server.State.Choices[m.Cursor]
+		if !choice.IsDir() && choice.IsFile() {
+			var fp string
+			if !strings.Contains(choice.Path(), m.Server.State.Dir) {
+				fp = filepath.Join(m.Server.State.Dir, choice.Path())
+			} else {
+				fp = choice.Path()
+			}
+			m.Server.CreateQuickTag(fp)
+		}
 	case key.Matches(msg, m.Keys.Enter):
 		value := m.SearchableSelectableList.Search.Input.Value()
 		switch m.Window.Name() {
