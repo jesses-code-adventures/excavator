@@ -51,6 +51,8 @@ type KeyMap struct {
 	CreateExport               key.Binding
 	RunExport                  key.Binding
 	BrowseTargetCollection     key.Binding
+	NextLocalSearchResult      key.Binding
+	PreviousLocalSearchResult  key.Binding
 }
 
 // The actual help text
@@ -162,5 +164,13 @@ var DefaultKeyMap = KeyMap{
 	BrowseTargetCollection: key.NewBinding(
 		key.WithKeys("b"),
 		key.WithHelp("b", "browse target collection"),
+	),
+	NextLocalSearchResult: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "next local search result"),
+	),
+	PreviousLocalSearchResult: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "previous local search result"),
 	),
 }

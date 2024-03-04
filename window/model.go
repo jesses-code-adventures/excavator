@@ -22,20 +22,21 @@ import (
 
 // A generic Model defining app behaviour in all states
 type Model struct {
-	Ready                    bool
-	Quitting                 bool
-	ShowCollections          bool
 	Cursor                   int
-	Keys                     keymaps.KeyMap
-	KeyHack                  keymaps.KeymapHacks
-	Server                   *server.Server
-	Help                     help.Model
-	Window                   Window
-	Viewport                 viewport.Model
 	Form                     core.Form
-	SelectableList           string
-	SearchableSelectableList core.SearchableSelectableList
+	Help                     help.Model
+	KeyHack                  keymaps.KeymapHacks
+	Keys                     keymaps.KeyMap
 	PreViewportInput         textinput.Model
+	Quitting                 bool
+	Ready                    bool
+	SearchableSelectableList core.SearchableSelectableList
+	SearchingLocally         bool
+	SelectableList           string
+	Server                   *server.Server
+	ShowCollections          bool
+	Viewport                 viewport.Model
+	Window                   Window
 }
 
 // Constructor for the app's model
@@ -58,6 +59,8 @@ func ExcavatorModel(server *server.Server, needsUserAndRoot bool) Model {
 	}
 	if needsUserAndRoot {
 		model.PreViewportInput.Focus()
+	} else {
+		model.SearchableSelectableList = core.NewSearchableList(window.Name().String())
 	}
 	return model
 }
@@ -220,6 +223,7 @@ func (m Model) ClearModel() Model {
 func (m Model) GoToHome(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 	m = m.ClearModel()
 	m.Window = Home.Window()
+	m.SearchableSelectableList = core.NewSearchableList(Home.String())
 	m.Server.UpdateChoices()
 	return m, cmd
 }
@@ -556,10 +560,21 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 	m = m.HandleStandardMovementKey(msg)
 	m, cmd = m.HandleWindowChangeKey(msg, cmd)
 	switch {
-	case key.Matches(msg, m.Keys.InsertMode) || key.Matches(msg, m.Keys.SearchBuf):
+	case key.Matches(msg, m.Keys.SearchBuf):
 		m.SearchableSelectableList.Search.Input.Focus()
 		m.Cursor = len(m.Server.State.Choices) - 1
 		m.Form.Writing = true
+		m.SearchingLocally = true
+	case key.Matches(msg, m.Keys.NextLocalSearchResult):
+		nextIdx := m.Server.State.GetNextMatchingIndex(m.Cursor)
+		if nextIdx != -1 {
+			m.Cursor = nextIdx
+		}
+	case key.Matches(msg, m.Keys.PreviousLocalSearchResult):
+		prevIdx := m.Server.State.GetPreviousMatchingIndex(m.Cursor)
+		if prevIdx != -1 {
+			m.Cursor = prevIdx
+		}
 	case key.Matches(msg, m.Keys.CreateQuickTag):
 		if len(m.Server.State.Choices) == 0 {
 			return m, cmd
@@ -576,6 +591,15 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		}
 	case key.Matches(msg, m.Keys.Enter):
 		value := m.SearchableSelectableList.Search.Input.Value()
+		if m.SearchingLocally {
+			m.Server.State.SearchCurrentChoices(value)
+			nextIdx := m.Server.State.GetNextMatchingIndex(m.Cursor)
+			if nextIdx != -1 {
+				m.Cursor = nextIdx
+			}
+			m.SearchingLocally = false
+			return m, cmd
+		}
 		switch m.Window.Name() {
 		case FuzzySearchRootWindow:
 			if value == "" {
@@ -633,17 +657,27 @@ func (m Model) HandleSearchableListWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Mode
 	case key.Matches(msg, m.Keys.Enter):
 		m.Form.Writing = false
 		m.SearchableSelectableList.Search.Input.Blur()
-		m = m.FilterListItems()
-		m.Cursor = 0
+		if !m.SearchingLocally {
+			m = m.FilterListItems()
+			m.Cursor = 0
+		} else {
+			m.SearchingLocally = false
+			newIdx := m.Server.State.GetNextMatchingIndex(m.Cursor)
+			if newIdx != -1 {
+				m.Cursor = newIdx
+			}
+		}
 	default:
 		var newInput textinput.Model
 		newInput, cmd = m.SearchableSelectableList.Search.Input.Update(msg)
 		m.SearchableSelectableList.Search.Input = newInput
 		m.SearchableSelectableList.Search.Input.Focus()
 		switch m.Window.Name() {
-		case SetTargetSubCollectionWindow, Home:
+		case SetTargetSubCollectionWindow:
 			m = m.FilterListItems()
 			m.Cursor = 0
+		case Home, FuzzySearchRootWindow, FuzzySearchCurrentWindow:
+			m.Server.State.SearchCurrentChoices(m.SearchableSelectableList.Search.Input.Value())
 		}
 	}
 	return m, cmd

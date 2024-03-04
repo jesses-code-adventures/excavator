@@ -8,7 +8,7 @@ i find managing samples frustrating, especially when it comes to keeping sample 
 
 this tool aims to create a natural experience for exploring and categorising your sample library for easy re-exporting when you get new devices, or re-organising the same set of samples repeatedly in your daw.
 
-## experience
+## usage
 the user should run the app from their cli by calling excavator run. you should also be able to cat a collection from the CLI directly.
 
 users that have already configured their root sample library should find themselves directly in the sample browser after running excavator run.
@@ -53,6 +53,9 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] press shift-F to recursively fuzzy find from the root directory.
 - [x] press b to browse the current target collection
 - [x] press shift-K to toggle showing collection tags for all samples
+- [x] press / to search the current buffer and move the cursor to the next match
+- [x] press n to move to the next search result after executing a search
+- [x] press p to move to the previous search result after executing a search
 
 ### todo
 - [ ] fix issue where fatal crash occurs if you try to tag a sample with no collection selected

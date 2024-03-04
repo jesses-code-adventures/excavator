@@ -23,21 +23,24 @@ import (
 //////////////////////// LOCAL SERVER ////////////////////////
 
 type State struct {
-	Root           string
-	Dir            string
-	choiceChannel  chan core.SelectableListItem
-	Choices        []core.SelectableListItem
-	CollectionTags func(path string) []core.CollectionTag
+	Choices            []core.SelectableListItem
+	choiceChannel      chan core.SelectableListItem
+	CollectionTags     func(path string) []core.CollectionTag
+	Dir                string
+	MatchingIndexes    []int
+	localSearchChannel chan string
+	Root               string
 }
 
 func NewNavState(root string, currentDir string, collectionTags func(path string) []core.CollectionTag) *State {
 	choiceChannel := make(chan core.SelectableListItem)
 	navState := State{
-		Root:           root,
-		Dir:            currentDir,
-		choiceChannel:  choiceChannel,
-		Choices:        make([]core.SelectableListItem, 0),
-		CollectionTags: collectionTags,
+		Root:            root,
+		Dir:             currentDir,
+		choiceChannel:   choiceChannel,
+		Choices:         make([]core.SelectableListItem, 0),
+		CollectionTags:  collectionTags,
+		MatchingIndexes: make([]int, 0),
 	}
 	go navState.Run()
 	return &navState
@@ -48,8 +51,58 @@ func (n *State) Run() {
 		select {
 		case choice := <-n.choiceChannel:
 			n.Choices = append(n.Choices, choice)
+		case search := <-n.localSearchChannel:
+			n.SearchCurrentChoices(search)
 		}
 	}
+}
+
+func (n *State) LocalSearch(search string) {
+	n.localSearchChannel <- search
+}
+
+func (n *State) SearchCurrentChoices(search string) {
+	indexes := make([]int, 0)
+	chunks := strings.Split(search, " ")
+	for i, choice := range n.Choices {
+		noMatch := false
+		for _, chunk := range chunks {
+			if !strings.Contains(strings.ToLower(choice.Name()), strings.ToLower(chunk)) {
+				noMatch = true
+				continue
+			}
+		}
+		if noMatch == true {
+			continue
+		}
+		indexes = append(indexes, i)
+	}
+	n.MatchingIndexes = indexes
+}
+
+func (n *State) GetNextMatchingIndex(position int) int {
+	if len(n.MatchingIndexes) == 0 {
+		return -1
+	}
+	for _, index := range n.MatchingIndexes {
+		if index > position {
+			return index
+		}
+	}
+	return n.MatchingIndexes[0]
+}
+
+func (n *State) GetPreviousMatchingIndex(position int) int {
+	if len(n.MatchingIndexes) == 0 {
+		return -1
+	}
+	for i := len(n.MatchingIndexes) - 1; i >= 0; i-- {
+		if n.MatchingIndexes[i] < position {
+			return n.MatchingIndexes[i]
+		}
+	}
+	return len(n.MatchingIndexes) - 1
+
 }
 
 func (n *State) pushChoice(choice core.SelectableListItem) {
