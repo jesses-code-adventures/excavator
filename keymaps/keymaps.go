@@ -46,6 +46,7 @@ type KeyMap struct {
 	SetTargetSubCollectionRoot key.Binding
 	SetTargetSubCollection     key.Binding
 	FuzzySearchFromRoot        key.Binding
+	FuzzySearchFromCurrent     key.Binding
 	ToggleShowCollections      key.Binding
 	CreateExport               key.Binding
 	RunExport                  key.Binding
@@ -141,6 +142,10 @@ var DefaultKeyMap = KeyMap{
 	FuzzySearchFromRoot: key.NewBinding(
 		key.WithKeys("F"),
 		key.WithHelp("F", "search sounds from root"),
+	),
+	FuzzySearchFromCurrent: key.NewBinding(
+		key.WithKeys("f"),
+		key.WithHelp("f", "search sounds from current dir"),
 	),
 	ToggleShowCollections: key.NewBinding(
 		key.WithKeys("K"),

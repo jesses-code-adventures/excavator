@@ -34,7 +34,7 @@ const (
 	FuzzySearchCurrentWindow
 	CreateExportWindow
 	RunExportWindow
-    BrowseCollectionWindow
+	BrowseCollectionWindow
 )
 
 func (w WindowName) String() string {
@@ -46,7 +46,7 @@ func (w WindowName) Window() Window {
 	case Home:
 		return Window{
 			name:       w,
-			windowType: DirectoryWalker,
+			windowType: SearchableSelectableListWindow,
 		}
 	case NewCollectionWindow:
 		return Window{

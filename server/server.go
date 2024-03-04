@@ -220,6 +220,25 @@ func (s *Server) GetCollectionSubcollections() []core.SubCollection {
 	return subCollections
 }
 
+func (s *Server) SearchCurrentChoices(search string) {
+	newChoices := make([]core.SelectableListItem, 0)
+	chunks := strings.Split(search, " ")
+	for _, choice := range s.State.Choices {
+		noMatch := false
+		for _, chunk := range chunks {
+			if !strings.Contains(choice.Name(), chunk) {
+				noMatch = true
+				continue
+			}
+		}
+		if noMatch == true {
+			continue
+		}
+		newChoices = append(newChoices, choice)
+	}
+	s.State.Choices = newChoices
+}
+
 func (s *Server) SearchCollectionSubcollections(search string) []core.SubCollection {
 	fuzzySearch := "%" + search + "%"
 	statement := `SELECT DISTINCT sub_collection
@@ -277,7 +296,6 @@ func (s *Server) HandleRootConstruction(config *core.Config) *Server {
 		log.Println("launched with temporary root ", config.Root)
 		s.User.Root = config.Root
 	}
-	log.Printf("Current user: %v, selected collection: %v, target subcollection: %v", s.User, s.User.TargetCollection.Name(), s.User.TargetSubCollection)
 	return s
 }
 

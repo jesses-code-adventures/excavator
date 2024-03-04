@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -175,12 +176,20 @@ type TaggedDirEntry struct {
 	Dir      bool
 }
 
+func NewTaggedDirEntry(filePath string, tags []CollectionTag, dir bool) TaggedDirEntry {
+	return TaggedDirEntry{
+		FilePath: filePath,
+		Tags:     tags,
+		Dir:      dir,
+	}
+}
+
 func (d TaggedDirEntry) Id() int {
 	return 0
 }
 
 func (d TaggedDirEntry) Name() string {
-	return d.FilePath
+	return path.Base(d.FilePath)
 }
 
 func (d TaggedDirEntry) Path() string {
@@ -234,7 +243,6 @@ type Config struct {
 
 // Constructor for the Config struct
 func NewConfig(data string, root string, dbFileName string) *Config {
-	log.Printf("data: %v, samples: %v", data, root)
 	sqlCommands, err := os.ReadFile("sql/create_db.sql")
 	if err != nil {
 		log.Fatalf("Failed to read SQL commands: %v", err)

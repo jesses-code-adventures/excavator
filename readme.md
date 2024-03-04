@@ -38,21 +38,22 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] browse samples using J/up arrow and K/down arrow.
 - [x] samples should play asynchronously so the user can continue browsing while a sample plays
 - [x] support for ctrl-D, ctrl-U, G and gg vim functions should exist.
-- [x] press q to quit.
+- [x] press q to quit if you're in the home window, else go to the home window.
 - [x] press r to jump to and audition a random sample from the current directory.
 - [x] press c to change the target collection.
 - [x] press shift-C to create a new collection.
-- [x] press t to create a tag in the current target collection and target directory.
+- [x] press t to tag the selected file to the target collection & subcollection.
 - [x] press shift-T to create a tag in the current target collection where the tag name and directory is editable.
 - [x] press a to audition a sample you're hovering over.
 - [x] press shift-A to toggle auto-audition mode.
 - [x] press e to select an export to run using the current collection.
 - [x] press shift-E to create a new export.
 - [x] press d to set the target subdirectory to the root
+- [x] press shift-D to change the target directory.
+- [x] press f to recursively fuzzy find from the current directory.
+- [x] press shift-F to recursively fuzzy find from the root directory.
 - [x] press b to browse the current target collection
-- [x] press shift-D to change the target directory in the current collection. this should be a searchable list, and if enter is pressed with no matches it should create a new one.
 - [x] press shift-K to toggle showing collection tags for all samples
-- [ ] press shift-F to fuzzy find over the entire sample library when browsing samples.
 
 ### todo
 - [ ] fix issue where fatal crash occurs if you try to tag a sample with no collection selected
