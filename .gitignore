@@ -3,4 +3,5 @@ logfile
 *.DS_Store
 *.mp3
 *.wav
+/scripts
 

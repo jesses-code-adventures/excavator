@@ -25,8 +25,7 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - **export:** taking a collection and copying all the files pointed to by the tags to a given directory. can be done in symlink or copy mode (default symlink).
 
 ## features
-- [ ] first launch should prompt user to create a "root sample library".
-- [ ] if the application is launched with no root directory and a directory flag, the user should be asked whether they'd like to make the given directory the root.
+- [x] user creates a username and defines their root sample directory if no cli flags are provided
 - [x] launching with a --data path sets the directory where long lived data, including the db file and the logfile is stored.
 - [x] launching with a --db flag sets the filename of the sqlite .db file. defaults to "excavator".
 - [x] launching with a --logfile flag allows editing of the name of the logfile (defaults to "logfile")

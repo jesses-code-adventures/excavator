@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"errors"
 	"flag"
 
 	// "io/fs"
@@ -164,21 +165,23 @@ func (s *Server) GetAllDirectories(path string) []string {
 
 // The main struct holding the Server
 type Server struct {
+	Config *core.Config
 	Db     *sql.DB
-	User   core.User
-	State  *State
+	Flags  *Flags
 	Player *audio.Player
+	State  *State
+	User   core.User
 }
 
-func (s *Server) HandleUserArg(userCliArg *string) core.User {
+func (s *Server) HandleUserArg(userCliArg *string) (core.User, error) {
 	var user core.User
 	users := s.GetUsers(userCliArg)
 	if len(*userCliArg) == 0 && len(users) == 0 {
-		log.Fatal("No users found")
+		return core.User{}, errors.New("No users found")
 	}
 	if len(*userCliArg) == 0 && len(users) > 0 {
 		user = users[0]
-		return user
+		return user, nil
 	}
 	if len(*userCliArg) > 0 && len(users) == 0 {
 		id := s.CreateUser(*userCliArg)
@@ -186,20 +189,20 @@ func (s *Server) HandleUserArg(userCliArg *string) core.User {
 			log.Fatal("Failed to create user")
 		}
 		user = s.GetUser(id)
-		return user
+		return user, nil
 	}
 	if len(*userCliArg) > 0 && len(users) > 0 {
 		for _, u := range users {
 			if u.Name == *userCliArg {
-				return u
+				return u, nil
 			}
 		}
 		id := s.CreateUser(*userCliArg)
 		user = s.GetUser(id)
-		return user
+		return user, nil
 	}
 	log.Fatal("We should never get here")
-	return user
+	return user, nil
 }
 
 func (s *Server) GetCollectionSubcollections() []core.SubCollection {
@@ -284,19 +287,19 @@ func ParseFlags() *Flags {
 }
 
 // Part of newServer constructor
-func (s *Server) HandleRootConstruction(config *core.Config) *Server {
-	if s.User.Root == "" && config.Root == "" {
-		log.Fatal("No root found")
-	} else if config.Root == "" {
-		config.Root = s.User.Root
+func (s *Server) HandleRootConstruction() (*Server, error) {
+	if s.User.Root == "" && s.Config.Root == "" {
+		return nil, errors.New("no root found")
+	} else if s.Config.Root == "" {
+		s.Config.Root = s.User.Root
 	} else if s.User.Root == "" {
-		s.User.Root = config.Root // TODO: prompt the user to see if they want to save the root
-		s.UpdateRootInDb(config.Root)
-	} else if s.User.Root != config.Root {
-		log.Println("launched with temporary root ", config.Root)
-		s.User.Root = config.Root
+		s.User.Root = s.Config.Root // TODO: prompt the user to see if they want to save the root
+		s.UpdateRootInDb(s.Config.Root)
+	} else if s.User.Root != s.Config.Root {
+		log.Println("launched with temporary root ", s.Config.Root)
+		s.User.Root = s.Config.Root
 	}
-	return s
+	return s, nil
 }
 
 // Construct the server
@@ -317,13 +320,25 @@ func NewServer(audioPlayer *audio.Player, flags *Flags) *Server {
 	s := Server{
 		Db:     db,
 		Player: audioPlayer,
+		Config: config,
+		Flags:  flags,
 	}
-	s.User = s.HandleUserArg(&flags.User)
-	s = *s.HandleRootConstruction(config)
-	navState := NewNavState(config.Root, config.Root, s.GetDirectoryTags)
-	s.State = navState
-	s.State.UpdateChoices()
 	return &s
+}
+
+func (s *Server) AddUserAndRoot() error {
+	user, err := s.HandleUserArg(&s.Flags.User)
+	if err != nil {
+		return err
+	}
+	s.User = user
+	s, err = s.HandleRootConstruction()
+	if err != nil {
+		return err
+	}
+	s.State = NewNavState(s.Config.Root, s.Config.Root, s.GetDirectoryTags)
+	s.State.UpdateChoices()
+	return nil
 }
 
 func (s *Server) SetRoot(path string) {
@@ -667,6 +682,33 @@ func (s *Server) GetUsers(name *string) []core.User {
 		users = append(users, core.User{Id: id, Name: name, AutoAudition: autoAudition, TargetCollection: selectedCollection, TargetSubCollection: selectedSubCollection, Root: root})
 	}
 	return users
+}
+
+func (s *Server) SetUserFromInput(user string) error {
+	if len(user) == 0 {
+		return errors.New("No user entered")
+	}
+	existing := s.GetUsers(&user)
+	if len(existing) == 0 {
+		id := s.CreateUser(user)
+		s.User = s.GetUser(id)
+	} else {
+		s.User = existing[0]
+	}
+	return nil
+}
+
+func (s *Server) SetRootFromInput(root string) error {
+	if len(root) == 0 {
+		return errors.New("No root entered")
+	}
+	root = core.ExpandHomeDir(root)
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return errors.New("Root does not exist")
+	}
+	s.State = NewNavState(root, root, s.GetDirectoryTags)
+	s.State.UpdateChoices()
+	return nil
 }
 
 // Create a user in the database

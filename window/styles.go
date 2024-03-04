@@ -5,7 +5,6 @@ import (
 )
 
 // ////////////////////// STYLING ////////////////////////
-
 // All styles to be used throughout the ui
 var (
 	// colours
@@ -56,4 +55,14 @@ var (
 				AlignHorizontal(lipgloss.Left)
 	SearchableSelectableListStyle = lipgloss.NewStyle().
 					Border(lipgloss.HiddenBorder())
+	PreViewportPromptStyle = lipgloss.NewStyle().
+				Border(lipgloss.HiddenBorder()).
+				Foreground(Pink)
+	PreViewportInputStyle = lipgloss.NewStyle().
+				Width(100).
+				Foreground(Pink).
+				Border(lipgloss.HiddenBorder())
+	PreViewportStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("241")).
+				Border(lipgloss.HiddenBorder())
 )

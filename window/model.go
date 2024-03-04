@@ -35,19 +35,31 @@ type Model struct {
 	Form                     core.Form
 	SelectableList           string
 	SearchableSelectableList core.SearchableSelectableList
+	PreViewportInput         textinput.Model
 }
 
 // Constructor for the app's model
-func ExcavatorModel(server *server.Server) Model {
-	return Model{
-		Ready:           false,
-		Quitting:        false,
-		ShowCollections: false,
-		Server:          server,
-		Help:            help.New(),
-		Keys:            keymaps.DefaultKeyMap,
-		Window:          Home.Window(),
+func ExcavatorModel(server *server.Server, needsUserAndRoot bool) Model {
+	var window Window
+	if needsUserAndRoot {
+		window = EnterUserWindow.Window()
+	} else {
+		window = Home.Window()
 	}
+	model := Model{
+		Ready:            false,
+		Quitting:         false,
+		ShowCollections:  false,
+		Server:           server,
+		Help:             help.New(),
+		Keys:             keymaps.DefaultKeyMap,
+		PreViewportInput: textinput.New(),
+		Window:           window,
+	}
+	if needsUserAndRoot {
+		model.PreViewportInput.Focus()
+	}
+	return model
 }
 
 // Get the header of the viewport
@@ -79,6 +91,9 @@ func NewStatusDisplayItem(key string, value string) StatusDisplayItem {
 
 // Display key info to user
 func (m Model) GetStatusDisplay() string {
+	if m.Window.Type() == PreViewport {
+		return ""
+	}
 	termWidth := m.Viewport.Width
 	msg := ""
 	// hack to make centering work
@@ -124,13 +139,6 @@ func (m Model) FooterView() string {
 func (m Model) HandleWindowResize(msg tea.WindowSizeMsg) Model {
 	headerHeight := lipgloss.Height(m.HeaderView())
 	footerHeight := lipgloss.Height(m.FooterView())
-	// searchInputHeight := 2 // Assuming the search input height is approximately 2 lines
-	// verticalPadding := 2   // Adjust based on your app's padding around the viewport
-	// Calculate available height differently if in SearchableSelectableList mode
-	// if m.Window.Type() == SearchableSelectableListWindow {
-	// 	m.Viewport.Height = msg.Height - headerHeight - footerHeight - searchInputHeight - verticalPadding
-	// } else {
-	// }
 	m.Viewport.Height = msg.Height - headerHeight - footerHeight
 	m.Viewport.Width = msg.Width
 	m.Ready = true
@@ -157,14 +165,26 @@ func (m Model) EnsureCursorVerticallyCentered() viewport.Model {
 	return viewport
 }
 
+func (m Model) getPreViewportArgs() (string, textinput.Model) {
+	var prompt string
+	switch m.Window.Name() {
+	case EnterUserWindow:
+		prompt = "Please enter a username: "
+	case EnterRootWindow:
+		prompt = "Please enter the root directory where you store your samples: "
+	}
+	return prompt, m.PreViewportInput
+}
+
 // Set the content of the viewport based on the window type
 func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 	switch m.Window.Type() {
+	case PreViewport:
+		m.Viewport.SetContent(m.Window.Type().PreViewportView(m.getPreViewportArgs()))
 	case FormWindow:
-		log.Println("setting viewport content for ", m.Form.Title)
 		m.Viewport.SetContent(FormWindow.FormView(m.Form))
 	default:
-		m.Viewport.SetContent(m.Window.Type().DirectoryView(
+		m.Viewport.SetContent(m.Window.Type().SearchableListView(
 			m.Server.State.Choices,
 			m.Cursor,
 			m.Viewport.Width,
@@ -270,6 +290,9 @@ func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, te
 	m = m.ClearModel()
 	m.Window = window.Window()
 	switch m.Window.Type() {
+	case PreViewport:
+		m.PreViewportInput = textinput.New()
+		m.PreViewportInput.Focus()
 	case FormWindow:
 		m, cmd = m.HandleForm(msg, cmd, window)
 	case SearchableSelectableListWindow, ListSelectionWindow:
@@ -297,7 +320,7 @@ func (m Model) AuditionCurrentlySelectedFile() {
 }
 
 // These functions should run every time the cursor moves in directory view
-func (m Model) DirVerticalNavEffect() {
+func (m Model) VerticalNavEffect() {
 	if m.Server.User.AutoAudition {
 		m.AuditionCurrentlySelectedFile()
 	}
@@ -310,33 +333,33 @@ func (m Model) HandleStandardMovementKey(msg tea.KeyMsg) Model {
 		if m.Cursor > 0 {
 			m.Cursor--
 		}
-		m.DirVerticalNavEffect()
+		m.VerticalNavEffect()
 	case key.Matches(msg, m.Keys.Down):
 		if m.Cursor < len(m.Server.State.Choices)-1 {
 			m.Cursor++
 		}
-		m.DirVerticalNavEffect()
+		m.VerticalNavEffect()
 	case key.Matches(msg, m.Keys.JumpDown):
 		if m.Cursor < len(m.Server.State.Choices)-8 {
 			m.Cursor += 8
 		} else {
 			m.Cursor = len(m.Server.State.Choices) - 1
 		}
-		m.DirVerticalNavEffect()
+		m.VerticalNavEffect()
 	case key.Matches(msg, m.Keys.JumpUp):
 		if m.Cursor > 8 {
 			m.Cursor -= 8
 		} else {
 			m.Cursor = 0
 		}
-		m.DirVerticalNavEffect()
+		m.VerticalNavEffect()
 	case key.Matches(msg, m.Keys.Audition):
 		m.AuditionCurrentlySelectedFile()
 	case key.Matches(msg, m.Keys.AuditionRandom):
 		fileIndex := m.Server.State.GetRandomAudioFileIndex()
 		if fileIndex != -1 {
 			m.Cursor = fileIndex
-			m.DirVerticalNavEffect()
+			m.VerticalNavEffect()
 		}
 		if !m.Server.User.AutoAudition {
 			m.AuditionCurrentlySelectedFile()
@@ -344,7 +367,7 @@ func (m Model) HandleStandardMovementKey(msg tea.KeyMsg) Model {
 	case key.Matches(msg, m.Keys.JumpBottom):
 		m.Viewport.GotoBottom()
 		m.Cursor = len(m.Server.State.Choices) - 1
-		m.DirVerticalNavEffect()
+		m.VerticalNavEffect()
 	default:
 		if msg.String() == "g" && m.KeyHack.GetLastKey() == "g" {
 			m.Cursor = 0
@@ -393,37 +416,6 @@ func (m Model) IsWindowKeyMsg(msg tea.KeyMsg) bool {
 	default:
 		return false
 	}
-}
-
-// Handle a single key press
-func (m Model) HandleDirectoryKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
-	m = m.HandleStandardMovementKey(msg)
-	m, cmd = m.HandleWindowChangeKey(msg, cmd)
-	switch {
-	case key.Matches(msg, m.Keys.ToggleShowCollections):
-		m.ShowCollections = !m.ShowCollections
-	case key.Matches(msg, m.Keys.Enter):
-		choice := m.Server.State.Choices[m.Cursor]
-		if choice.IsDir() {
-			if choice.Name() == ".." {
-				m.Cursor = 0
-				m.Server.State.ChangeToParentDir()
-			} else {
-				m.Cursor = 0
-				m.Server.State.ChangeDir(choice.Name())
-			}
-		}
-	case key.Matches(msg, m.Keys.ToggleAutoAudition):
-		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
-	case key.Matches(msg, m.Keys.CreateQuickTag):
-		choice := m.Server.State.Choices[m.Cursor]
-		log.Println("creating quick tag for ", choice.Name())
-		if !choice.IsDir() {
-			m.Server.CreateQuickTag(choice.Name())
-		}
-		m.Server.UpdateChoices()
-	}
-	return m, cmd
 }
 
 // List selection navigation
@@ -582,7 +574,6 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		value := m.SearchableSelectableList.Search.Input.Value()
 		switch m.Window.Name() {
 		case FuzzySearchRootWindow:
-			log.Println("got value ", value)
 			if value == "" {
 				return m, cmd
 			}
@@ -664,6 +655,34 @@ func (m Model) HandleSearchableListKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 	return m, cmd
 }
 
+func (m Model) HandlePreViewportKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.Keys.Enter):
+		switch m.Window.Name() {
+		case EnterUserWindow:
+			err := m.Server.SetUserFromInput(m.PreViewportInput.Value())
+			if err != nil {
+				log.Println("error setting user from input: ", err)
+				return m, cmd
+			}
+			m.PreViewportInput = textinput.New()
+			m.Window = EnterRootWindow.Window()
+		case EnterRootWindow:
+			err := m.Server.SetRootFromInput(m.PreViewportInput.Value())
+			if err != nil {
+				log.Println("error setting root from input: ", err)
+				return m, cmd
+			}
+			m.PreViewportInput = textinput.New()
+			m, cmd = m.SetWindow(msg, cmd, NewCollectionWindow)
+		}
+	default:
+		m.PreViewportInput.Focus()
+		m.PreViewportInput, cmd = m.PreViewportInput.Update(msg)
+	}
+	return m, cmd
+}
+
 // Takes a message and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -672,12 +691,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.HandleWindowResize(msg)
 	case tea.KeyMsg:
 		switch m.Window.Type() {
+		case PreViewport:
+			m, cmd = m.HandlePreViewportKey(msg, cmd)
 		case FormWindow:
 			m, cmd = m.HandleFormKey(msg, cmd)
 		case ListSelectionWindow:
 			m, cmd = m.HandleListSelectionKey(msg, cmd)
-		case DirectoryWalker:
-			m, cmd = m.HandleDirectoryKey(msg, cmd)
 		case SearchableSelectableListWindow:
 			m, cmd = m.HandleSearchableListKey(msg, cmd)
 		}

@@ -31,9 +31,14 @@ func NewApp(cliFlags *server.Flags) App {
 	log.SetOutput(f)
 	audioPlayer := audio.NewAudioPlayer()
 	server := server.NewServer(audioPlayer, cliFlags)
+	err = server.AddUserAndRoot()
+	needsUserAndRoot := false
+	if err != nil {
+		needsUserAndRoot = true
+	}
 	return App{
 		server:         server,
-		bubbleTeaModel: window.ExcavatorModel(server),
+		bubbleTeaModel: window.ExcavatorModel(server, needsUserAndRoot),
 		logFile:        f,
 	}
 }

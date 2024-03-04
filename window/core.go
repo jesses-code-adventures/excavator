@@ -16,10 +16,11 @@ const (
 	FormWindow
 	ListSelectionWindow
 	SearchableSelectableListWindow
+	PreViewport
 )
 
 func (w WindowType) String() string {
-	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableListWindow"}[w]
+	return [...]string{"DirectoryWalker", "FormWindow", "ListSelectionWindow", "SearchableSelectableListWindow", "PreViewport"}[w]
 }
 
 type WindowName int
@@ -35,10 +36,12 @@ const (
 	CreateExportWindow
 	RunExportWindow
 	BrowseCollectionWindow
+	EnterUserWindow
+	EnterRootWindow
 )
 
 func (w WindowName) String() string {
-	return [...]string{"home window", "new collection", "create tag", "set target subcollection", "set target collection", "fuzzy search from root", "fuzzy search window", "create export", "run export", "browse collection"}[w]
+	return [...]string{"home window", "new collection", "create tag", "set target subcollection", "set target collection", "fuzzy search from root", "fuzzy search window", "create export", "run export", "browse collection", "enter user", "enter root"}[w]
 }
 
 func (w WindowName) Window() Window {
@@ -94,10 +97,32 @@ func (w WindowName) Window() Window {
 			name:       w,
 			windowType: SearchableSelectableListWindow,
 		}
+	case EnterUserWindow:
+		return Window{
+			name:       w,
+			windowType: PreViewport,
+		}
+	case EnterRootWindow:
+		return Window{
+			name:       w,
+			windowType: PreViewport,
+		}
 	default:
 		log.Fatalf("Unknown window name: %v", w.String())
 	}
 	return Window{}
+}
+
+func (w WindowType) PreViewportView(prompt string, input textinput.Model) string {
+	if w != PreViewport {
+		log.Fatalf("FormView called on a non-form window: %v", w)
+	}
+	s := ""
+	prompt = PreViewportPromptStyle.Render(prompt)
+	s += prompt
+	renderedInput := PreViewportInputStyle.Render(input.View())
+	s += renderedInput
+	return PreViewportStyle.Render(s)
 }
 
 func (w WindowType) FormView(form core.Form) string {
@@ -116,9 +141,9 @@ func (w WindowType) FormView(form core.Form) string {
 	return FormStyle.Render(s)
 }
 
-func (w WindowType) DirectoryView(choices []core.SelectableListItem, cursor int, maxWidth int, showCollections bool, input textinput.Model) string {
+func (w WindowType) SearchableListView(choices []core.SelectableListItem, cursor int, maxWidth int, showCollections bool, input textinput.Model) string {
 	if w == FormWindow {
-		log.Fatal("Directory view called on a form", w)
+		log.Fatal("Searchable list view called on a form", w)
 	}
 	s := ""
 	for i, choice := range choices {
@@ -145,7 +170,6 @@ func (w WindowType) DirectoryView(choices []core.SelectableListItem, cursor int,
 	}
 	var searchInput string
 	if w == SearchableSelectableListWindow {
-		// searchInput = SearchInputBoxStyle.Render(m.SearchableSelectableList.Search.Input.View())
 		searchInput = SearchInputBoxStyle.Render(input.View())
 		return s + "\n" + searchInput
 	}
