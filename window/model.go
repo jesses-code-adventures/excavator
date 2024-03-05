@@ -72,8 +72,6 @@ func (m Model) getSeparatorLine() string {
 
 func (m Model) getRemainingLine() string {
 	requiredDashes := max(0, m.Viewport.Width)
-	log.Println("viewport width: ", m.Viewport.Width)
-	log.Println("required dashes: ", requiredDashes)
 	return strings.Repeat("─", requiredDashes)
 }
 
