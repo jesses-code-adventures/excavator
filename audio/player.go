@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 	// Audio
-	"github.com/faiface/beep"
-	"github.com/faiface/beep/flac"
-	"github.com/faiface/beep/mp3"
-	"github.com/faiface/beep/speaker"
-	"github.com/faiface/beep/wav"
+	"github.com/gopxl/beep"
+	"github.com/gopxl/beep/flac"
+	"github.com/gopxl/beep/mp3"
+	"github.com/gopxl/beep/speaker"
+	"github.com/gopxl/beep/wav"
 )
 
 // ////////////////////// AUDIO HANDLING ////////////////////////
