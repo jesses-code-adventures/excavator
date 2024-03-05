@@ -351,6 +351,11 @@ func (s SubCollection) Name() string {
 	return s.name
 }
 
+func (s SubCollection) SetName(name string) SubCollection {
+	s.name = name
+	return s
+}
+
 func (s SubCollection) Path() string {
 	return ""
 }

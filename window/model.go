@@ -61,15 +61,31 @@ func ExcavatorModel(server *server.Server, needsUserAndRoot bool) Model {
 		model.PreViewportInput.Focus()
 	} else {
 		model.SearchableSelectableList = core.NewSearchableList(window.Name().String())
+		model.Server.UpdateChoices()
 	}
 	return model
+}
+
+func (m Model) getSeparatorLine() string {
+	return " ─ "
+}
+
+func (m Model) getRemainingLine() string {
+	requiredDashes := max(0, m.Viewport.Width)
+	log.Println("viewport width: ", m.Viewport.Width)
+	log.Println("required dashes: ", requiredDashes)
+	return strings.Repeat("─", requiredDashes)
 }
 
 // Get the header of the viewport
 func (m Model) HeaderView() string {
 	title := TitleStyle.Render("Excavator - Samples")
-	line := strings.Repeat("─", max(0, m.Viewport.Width-lipgloss.Width(title)))
-	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
+	titleLine := m.getSeparatorLine()
+	title = lipgloss.JoinHorizontal(lipgloss.Center, title, titleLine)
+	window := WindowLabelStyle.Render(m.Window.Name().String())
+	windowLine := m.getRemainingLine()
+	window = lipgloss.JoinHorizontal(lipgloss.Center, window, windowLine)
+	return lipgloss.JoinHorizontal(lipgloss.Center, title, window)
 }
 
 type StatusDisplayItem struct {
@@ -190,6 +206,7 @@ func (m Model) SetViewportContent(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 			m.Viewport.Width,
 			m.ShowCollections,
 			m.SearchableSelectableList.Search.Input,
+			m.Window.Name() == BrowseCollectionWindow,
 		))
 		m.Viewport = m.EnsureCursorVerticallyCentered()
 	}
@@ -232,11 +249,18 @@ func (m Model) GoToHome(msg tea.Msg, cmd tea.Cmd) (Model, tea.Cmd) {
 func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, tea.Cmd) {
 	switch window {
 	case SetTargetSubCollectionWindow:
+		m.ClearModel()
 		subCollections := m.Server.GetCollectionSubcollections()
+		includedRoot := false
 		for _, subCollection := range subCollections {
+			if subCollection.Name() == "" && !includedRoot {
+				subCollection = subCollection.SetName("root")
+				includedRoot = true
+			}
 			m.Server.State.Choices = append(m.Server.State.Choices, subCollection)
 		}
 	case SetTargetCollectionWindow:
+		m.ClearModel()
 		collections := m.Server.GetCollections()
 		m.SelectableList = window.String()
 		for _, collection := range collections {
@@ -246,6 +270,7 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		m.Server.State.Choices = make([]core.SelectableListItem, 0)
 	case Home:
 	case BrowseCollectionWindow:
+		m.ClearModel()
 		tags := m.Server.GetCollectionTagsAsListItem(m.Server.User.TargetCollection.Id())
 		for _, tag := range tags {
 			m.Server.State.Choices = append(m.Server.State.Choices, tag)
@@ -260,6 +285,7 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		log.Fatalf("Invalid searchable selectable list title")
 	}
 	m.SearchableSelectableList = core.NewSearchableList(window.String())
+	log.Println("searchable selectable list: ", m.SearchableSelectableList)
 	return m, cmd
 }
 
@@ -279,7 +305,6 @@ func (m Model) HandleForm(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, t
 	case NewTagWindow:
 		fp := m.Server.State.Choices[m.Cursor].Path()
 		name := path.Base(fp)
-		log.Printf("choices: %v\ncursor: %v\nfilepath: %v\nname: %v", len(m.Server.State.Choices), m.Cursor, fp, name)
 		m.Form = core.GetCreateTagForm(name, m.Server.User.TargetSubCollection)
 	}
 	return m, cmd
@@ -313,11 +338,7 @@ func (m Model) AuditionCurrentlySelectedFile() {
 	choice := m.Server.State.Choices[m.Cursor]
 	if !choice.IsDir() && choice.IsFile() {
 		var path string
-		if !strings.Contains(choice.Path(), m.Server.State.Dir) {
-			path = filepath.Join(m.Server.State.Dir, choice.Path())
-		} else {
-			path = choice.Path()
-		}
+		path = choice.Path()
 		go m.Server.Player.PlayAudioFile(path)
 	}
 }
@@ -358,6 +379,8 @@ func (m Model) HandleStandardMovementKey(msg tea.KeyMsg) Model {
 		m.VerticalNavEffect()
 	case key.Matches(msg, m.Keys.Audition):
 		m.AuditionCurrentlySelectedFile()
+	case key.Matches(msg, m.Keys.ToggleAutoAudition):
+		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.AuditionRandom):
 		fileIndex := m.Server.State.GetRandomAudioFileIndex()
 		if fileIndex != -1 {
@@ -421,10 +444,7 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
-	case key.Matches(msg, m.Keys.ToggleAutoAudition):
-		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	case key.Matches(msg, m.Keys.Enter):
-		log.Println("handling selectable list enter for ", m.SelectableList)
 		switch m.Window.Name() {
 		case SetTargetCollectionWindow:
 			if collection, ok := m.Server.State.Choices[m.Cursor].(core.CollectionMetadata); ok {
@@ -561,10 +581,16 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 	m, cmd = m.HandleWindowChangeKey(msg, cmd)
 	switch {
 	case key.Matches(msg, m.Keys.SearchBuf):
+		m.SearchableSelectableList.Search.Input.Reset()
 		m.SearchableSelectableList.Search.Input.Focus()
 		m.Cursor = len(m.Server.State.Choices) - 1
 		m.Form.Writing = true
 		m.SearchingLocally = true
+	case key.Matches(msg, m.Keys.InsertMode):
+		m.SearchableSelectableList.Search.Input.Reset()
+		m.SearchableSelectableList.Search.Input.Focus()
+		m.Cursor = len(m.Server.State.Choices) - 1
+		m.Form.Writing = true
 	case key.Matches(msg, m.Keys.NextLocalSearchResult):
 		nextIdx := m.Server.State.GetNextMatchingIndex(m.Cursor)
 		if nextIdx != -1 {

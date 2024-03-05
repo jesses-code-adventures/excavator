@@ -8,9 +8,10 @@ import (
 // All styles to be used throughout the ui
 var (
 	// colours
-	Green = lipgloss.Color("#25A065")
-	Pink  = lipgloss.Color("#E441B5")
-	White = lipgloss.Color("#FFFDF5")
+	Green    = lipgloss.Color("#25A065")
+	Pink     = lipgloss.Color("#E441B5")
+	DarkPink = lipgloss.Color("#E441DE")
+	White    = lipgloss.Color("#FFFDF5")
 	// App
 	AppStyle   = lipgloss.NewStyle()
 	TitleStyle = lipgloss.NewStyle().
@@ -18,6 +19,9 @@ var (
 			Background(Green).
 			Padding(1, 1).
 			Height(3)
+	WindowLabelStyle = lipgloss.NewStyle().
+				Foreground(DarkPink).
+				Padding(1, 1)
 	HelpKeyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{
 			Light: "#909090",

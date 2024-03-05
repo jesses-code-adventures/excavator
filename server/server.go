@@ -32,7 +32,7 @@ type State struct {
 	Root               string
 }
 
-func NewNavState(root string, currentDir string, collectionTags func(path string) []core.CollectionTag) *State {
+func NewState(root string, currentDir string, collectionTags func(path string) []core.CollectionTag) *State {
 	choiceChannel := make(chan core.SelectableListItem)
 	navState := State{
 		Root:            root,
@@ -159,7 +159,7 @@ func (f *State) FilterDirEntries(entries []os.DirEntry) []os.DirEntry {
 func (f *State) ListDirEntries() []core.SelectableListItem {
 	files, err := os.ReadDir(f.Dir)
 	if err != nil {
-		log.Fatalf("Failed to read samples directory: %v", err)
+		log.Fatalf("Failed to read samples directory in ListDirEntries: %v", err)
 	}
 	files = f.FilterDirEntries(files)
 	var samples []core.SelectableListItem
@@ -173,7 +173,7 @@ func (f *State) ListDirEntries() []core.SelectableListItem {
 				}
 			}
 		}
-		samples = append(samples, core.TaggedDirEntry{FilePath: file.Name(), Tags: matchedTags, Dir: isDir})
+		samples = append(samples, core.NewTaggedDirEntry(path.Join(f.Dir, file.Name()), matchedTags, isDir))
 	}
 	return samples
 }
@@ -340,13 +340,13 @@ func ParseFlags() *Flags {
 }
 
 // Part of newServer constructor
-func (s *Server) HandleRootConstruction() (*Server, error) {
+func (s Server) HandleRootConstruction() (Server, error) {
 	if s.User.Root == "" && s.Config.Root == "" {
-		return nil, errors.New("no root found")
+		return Server{}, errors.New("no root found")
 	} else if s.Config.Root == "" {
 		s.Config.Root = s.User.Root
 	} else if s.User.Root == "" {
-		s.User.Root = s.Config.Root // TODO: prompt the user to see if they want to save the root
+		s.User.Root = s.Config.Root
 		s.UpdateRootInDb(s.Config.Root)
 	} else if s.User.Root != s.Config.Root {
 		log.Println("launched with temporary root ", s.Config.Root)
@@ -356,7 +356,7 @@ func (s *Server) HandleRootConstruction() (*Server, error) {
 }
 
 // Construct the server
-func NewServer(audioPlayer *audio.Player, flags *Flags) *Server {
+func NewServer(audioPlayer *audio.Player, flags *Flags) Server {
 	config := core.NewConfig(flags.Data, flags.Root, flags.DbFileName)
 	config.CreateDataDirectory()
 	dbPath := config.GetDbPath()
@@ -376,22 +376,25 @@ func NewServer(audioPlayer *audio.Player, flags *Flags) *Server {
 		Config: config,
 		Flags:  flags,
 	}
-	return &s
+	return s
 }
 
-func (s *Server) AddUserAndRoot() error {
+func (s Server) AddUserAndRoot() (Server, error){
+	log.Println("about to handle user arg")
 	user, err := s.HandleUserArg(&s.Flags.User)
 	if err != nil {
-		return err
+		log.Println("error in handle user arg")
+		return s, err
 	}
 	s.User = user
+	log.Println("about to handle root construction")
 	s, err = s.HandleRootConstruction()
 	if err != nil {
-		return err
+		return s, err
 	}
-	s.State = NewNavState(s.Config.Root, s.Config.Root, s.GetDirectoryTags)
+	s.State = NewState(s.Config.Root, s.Config.Root, s.GetDirectoryTags)
 	s.State.UpdateChoices()
-	return nil
+	return s, nil
 }
 
 func (s *Server) SetRoot(path string) {
@@ -557,7 +560,7 @@ from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where ct.id = ? order by ct.sub_collection asc, ct.name asc`
+where col.id = ? order by ct.sub_collection asc, ct.name asc`
 	rows, err := s.Db.Query(statement, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -694,6 +697,7 @@ func (s *Server) GetUser(id int) core.User {
 
 // Get all users
 func (s *Server) GetUsers(name *string) []core.User {
+	log.Println("In get users")
 	var whereClause string
 	var rows *sql.Rows
 	var err error
@@ -759,7 +763,7 @@ func (s *Server) SetRootFromInput(root string) error {
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		return errors.New("Root does not exist")
 	}
-	s.State = NewNavState(root, root, s.GetDirectoryTags)
+	s.State = NewState(root, root, s.GetDirectoryTags)
 	s.State.UpdateChoices()
 	return nil
 }

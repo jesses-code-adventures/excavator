@@ -26,19 +26,20 @@ func NewApp(cliFlags *server.Flags) App {
 	logFilePath := filepath.Join(cliFlags.Data, cliFlags.LogFile)
 	f, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatalf("error opening file: %v", err)
+		log.Fatalf("error opening file in NewApp: %v", err)
 	}
 	log.SetOutput(f)
 	audioPlayer := audio.NewAudioPlayer()
 	server := server.NewServer(audioPlayer, cliFlags)
-	err = server.AddUserAndRoot()
+	server, err = server.AddUserAndRoot()
 	needsUserAndRoot := false
 	if err != nil {
 		needsUserAndRoot = true
 	}
+	log.Println("needs user and root: ", needsUserAndRoot)
 	return App{
-		server:         server,
-		bubbleTeaModel: window.ExcavatorModel(server, needsUserAndRoot),
+		server:         &server,
+		bubbleTeaModel: window.ExcavatorModel(&server, needsUserAndRoot),
 		logFile:        f,
 	}
 }

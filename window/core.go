@@ -3,6 +3,7 @@ package window
 import (
 	"fmt"
 	"log"
+	"path"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/jesses-code-adventures/excavator/core"
@@ -41,7 +42,7 @@ const (
 )
 
 func (w WindowName) String() string {
-	return [...]string{"home window", "new collection", "create tag", "set target subcollection", "set target collection", "fuzzy search from root", "fuzzy search window", "create export", "run export", "browse collection", "enter user", "enter root"}[w]
+	return [...]string{"home", "create collection", "create tag", "target subcollection", "target collection", "recursive search - root", "recursive search - current dir", "create export", "run export", "browse target collection", "create user", "create root"}[w]
 }
 
 func (w WindowName) Window() Window {
@@ -67,7 +68,6 @@ func (w WindowName) Window() Window {
 			windowType: SearchableSelectableListWindow,
 		}
 	case SetTargetCollectionWindow:
-		log.Println("SetTargetCollectionWindow")
 		return Window{
 			name:       w,
 			windowType: ListSelectionWindow,
@@ -141,27 +141,36 @@ func (w WindowType) FormView(form core.Form) string {
 	return FormStyle.Render(s)
 }
 
-func (w WindowType) SearchableListView(choices []core.SelectableListItem, cursor int, maxWidth int, showCollections bool, input textinput.Model) string {
+func (w WindowType) SearchableListView(choices []core.SelectableListItem, cursor int, maxWidth int, showCollections bool, input textinput.Model, isBrowseCollectionView bool) string {
 	if w == FormWindow {
 		log.Fatal("Searchable list view called on a form", w)
 	}
 	s := ""
 	for i, choice := range choices {
 		var newLine string
+		var name string
+		var description string
+		if isBrowseCollectionView {
+			name = path.Join(choice.Description(), choice.Name())
+			description = ""
+		} else {
+			name = choice.Name()
+			description = choice.Description()
+		}
 		if cursor == i {
 			cursor := ">"
-			newLine = fmt.Sprintf("%s %s", cursor, choice.Name())
+			newLine = fmt.Sprintf("%s %s", cursor, name)
 		} else {
-			newLine = fmt.Sprintf("  %s", choice.Name())
+			newLine = fmt.Sprintf("  %s", name)
 		}
 		if len(newLine) > maxWidth {
 			newLine = newLine[:maxWidth-2]
 		}
 		if cursor == i {
-			newLine = SelectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
+			newLine = SelectedStyle.Render(newLine, fmt.Sprintf("    %v", description))
 		} else {
 			if showCollections {
-				newLine = UnselectedStyle.Render(newLine, fmt.Sprintf("    %v", choice.Description()))
+				newLine = UnselectedStyle.Render(newLine, fmt.Sprintf("    %v", description))
 			} else {
 				newLine = UnselectedStyle.Render(newLine)
 			}

@@ -119,7 +119,7 @@ func (a *Player) handlePlayCommand(path string) {
 	log.Println("Handling play command", path)
 	f, err := os.Open(path)
 	if err != nil {
-		log.Fatal("error opening file ", err)
+		log.Fatal("error opening file in handleplaycommand ", err)
 	}
 	defer f.Close()
 	a.Playing = true
