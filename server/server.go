@@ -731,11 +731,13 @@ func (s *Server) GetUsers(name *string) []core.User {
 	if name != nil && len(*name) > 0 {
 		whereClause = "where u.name = ?"
 	}
-	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id order by u.name asc`
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
 	if whereClause != "" {
 		statement = statement + " " + whereClause
+		statement += " order by u.name asc"
 		rows, err = s.Db.Query(statement, name)
 	} else {
+		statement += " order by u.name asc"
 		rows, err = s.Db.Query(statement)
 	}
 	if err != nil {
