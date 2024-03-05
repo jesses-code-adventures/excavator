@@ -75,6 +75,10 @@ jobs:
           # Use sed to replace the sha256 line in-place
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
 
+          # Configure git user (necessary if not already configured in the workflow)
+          git config user.email "jesse@negativespacesounds.com"
+          git config user.name "Jesse Williams"
+
           # Add changes, commit, and push back to the repository
           git add Formula/excavator.rb
           git commit -m "Update excavator to ${{ env.TAG_NAME }}"
