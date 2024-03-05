@@ -58,6 +58,11 @@ jobs:
 
       steps:
       - uses: actions/checkout@v4
+      - name: Get libasound2
+        run: |
+          if [ "${{ matrix.goos }}" = "linux" ]; then
+            sudo apt-get install libasound2-dev
+          fi
       - uses: wangyoucao577/go-release-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
