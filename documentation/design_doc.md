@@ -58,7 +58,6 @@ while browsing samples, you should just be able to "write a tag" on a sample and
 - [x] press p to move to the previous search result after executing a search
 
 ### todo
-- [ ] fix issue where fatal crash occurs if you try to tag a sample with no collection selected
 - [ ] implement detailed help and clean up short help
 
 ### further extensions

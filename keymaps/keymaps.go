@@ -53,17 +53,25 @@ type KeyMap struct {
 	BrowseTargetCollection     key.Binding
 	NextLocalSearchResult      key.Binding
 	PreviousLocalSearchResult  key.Binding
+	ShowHelp                   key.Binding
 }
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.SearchBuf, k.AuditionRandom, k.ToggleAutoAudition, k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag, k.CreateExport, k.RunExport}
+	return []key.Binding{k.Quit, k.Audition, k.CreateQuickTag, k.CreateExport, k.RunExport}
 }
 
 // Empty because not using
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{},
+		{k.Up, k.Down, k.JumpUp, k.JumpDown, k.JumpBottom},
+		{k.Audition, k.AuditionRandom, k.ToggleAutoAudition},
+		{k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag},
+		{k.SearchBuf, k.FuzzySearchFromRoot, k.FuzzySearchFromCurrent},
+		{k.CreateExport, k.RunExport, k.BrowseTargetCollection},
+		{k.ToggleShowCollections},
+		{k.NextLocalSearchResult, k.PreviousLocalSearchResult},
+		{k.InsertMode, k.Quit},
 	}
 }
 
@@ -172,5 +180,9 @@ var DefaultKeyMap = KeyMap{
 	PreviousLocalSearchResult: key.NewBinding(
 		key.WithKeys("p"),
 		key.WithHelp("p", "previous local search result"),
+	),
+	ShowHelp: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "show help"),
 	),
 }

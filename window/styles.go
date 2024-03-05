@@ -32,6 +32,9 @@ var (
 			Light: "#B2B2B2",
 			Dark:  "#4A4A4A",
 		})
+	FooterStyle = lipgloss.NewStyle().
+			Border(lipgloss.HiddenBorder())
+
 	// Directory Walker
 	ViewportStyle = lipgloss.NewStyle()
 	SelectedStyle = lipgloss.NewStyle().

@@ -28,9 +28,10 @@ CREATE TABLE IF NOT EXISTS CollectionTag (
     tag_id INTEGER NOT NULL,
     collection_id INTEGER NOT NULL,
     name TEXT NOT NULL,
-    sub_collection TEXT,
+    sub_collection TEXT default(''),
     FOREIGN KEY (tag_id) REFERENCES Tag(id),
     FOREIGN KEY (collection_id) REFERENCES Collection(id)
+    UNIQUE (tag_id, collection_id, sub_collection)
 );
 
 CREATE TABLE IF NOT EXISTS Export (

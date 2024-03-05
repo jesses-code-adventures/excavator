@@ -25,11 +25,14 @@ type Model struct {
 	Cursor                   int
 	Form                     core.Form
 	Help                     help.Model
+	ExtendedHelp             bool
 	KeyHack                  keymaps.KeymapHacks
 	Keys                     keymaps.KeyMap
 	PreViewportInput         textinput.Model
 	Quitting                 bool
 	Ready                    bool
+	screenHeight             int
+	screenWidth              int
 	SearchableSelectableList core.SearchableSelectableList
 	SearchingLocally         bool
 	SelectableList           string
@@ -146,13 +149,24 @@ func (m Model) FooterView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
-	return m.GetStatusDisplay() + "\n" + centeredHelpText
+	return FooterStyle.Render(m.GetStatusDisplay() + "\n" + centeredHelpText)
+}
+
+func (m Model) ManuallyResizeWindow() Model {
+	footerHeight := lipgloss.Height(m.FooterView())
+	headerHeight := lipgloss.Height(m.HeaderView())
+	newHeight := m.screenHeight - headerHeight - footerHeight
+	m.Viewport.Height = newHeight
+	m.Ready = true
+	return m
 }
 
 // // Ui updating for window resize events
 func (m Model) HandleWindowResize(msg tea.WindowSizeMsg) Model {
-	headerHeight := lipgloss.Height(m.HeaderView())
 	footerHeight := lipgloss.Height(m.FooterView())
+	headerHeight := lipgloss.Height(m.HeaderView())
+	m.screenHeight = msg.Height
+	m.screenWidth = msg.Width
 	m.Viewport.Height = msg.Height - headerHeight - footerHeight
 	m.Viewport.Width = msg.Width
 	m.Ready = true
@@ -283,7 +297,6 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 		log.Fatalf("Invalid searchable selectable list title")
 	}
 	m.SearchableSelectableList = core.NewSearchableList(window.String())
-	log.Println("searchable selectable list: ", m.SearchableSelectableList)
 	return m, cmd
 }
 
@@ -326,6 +339,13 @@ func (m Model) SetWindow(msg tea.Msg, cmd tea.Cmd, window WindowName) (Model, te
 	}
 	m.Cursor = 0
 	return m, cmd
+}
+
+func (m Model) ToggleExtendedHelp() Model {
+	m.ExtendedHelp = !m.ExtendedHelp
+	m.Help.ShowAll = m.ExtendedHelp
+	m = m.ManuallyResizeWindow()
+	return m
 }
 
 // Audition the file under the cursor
@@ -392,6 +412,8 @@ func (m Model) HandleStandardMovementKey(msg tea.KeyMsg) Model {
 		m.Viewport.GotoBottom()
 		m.Cursor = len(m.Server.State.Choices) - 1
 		m.VerticalNavEffect()
+	case key.Matches(msg, m.Keys.ShowHelp):
+		m = m.ToggleExtendedHelp()
 	default:
 		if msg.String() == "g" && m.KeyHack.GetLastKey() == "g" {
 			m.Cursor = 0
@@ -498,6 +520,8 @@ func (m Model) HandleFormNavigationKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.
 		m.Server.UpdateTargetSubCollection("")
 	case key.Matches(msg, m.Keys.ToggleAutoAudition):
 		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
+	case key.Matches(msg, m.Keys.ShowHelp):
+		m.Help.ShowAll = !m.Help.ShowAll
 	case key.Matches(msg, m.Keys.Enter):
 		for i, input := range m.Form.Inputs {
 			if input.Input.Value() == "" {
@@ -559,7 +583,6 @@ func (m Model) FilterListItems() Model {
 
 // Form writing
 func (m Model) HandleFormWritingKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.Cmd) {
-	log.Println("handling form writing key")
 	switch {
 	case key.Matches(msg, m.Keys.Enter):
 		m.Form.Writing = false
@@ -655,9 +678,7 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 				m.Server.UpdateTargetSubCollection(value)
 			} else {
 				selected := m.Server.State.Choices[m.Cursor]
-				log.Printf("selected: %v", selected)
 				if collection, ok := selected.(core.SelectableListItem); ok {
-					log.Printf("selected collection: %v", collection.Name())
 					m.Server.UpdateTargetSubCollection(collection.Name())
 				} else {
 					log.Fatalf("Invalid list selection item type")

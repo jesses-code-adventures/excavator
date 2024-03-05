@@ -297,10 +297,10 @@ func (s *Server) SearchCurrentChoices(search string) {
 
 func (s *Server) SearchCollectionSubcollections(search string) []core.SubCollection {
 	fuzzySearch := "%" + search + "%"
-	statement := `SELECT DISTINCT sub_collection
-                  FROM CollectionTag
-                  WHERE collection_id = ? AND sub_collection LIKE ?
-                  ORDER BY sub_collection ASC`
+	statement := `select distinct sub_collection
+                  from collectiontag
+                  where collection_id = ? and sub_collection like ?
+                  order by sub_collection asc`
 	rows, err := s.Db.Query(statement, s.User.TargetCollection.Id(), fuzzySearch)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in searchCollectionSubcollections: %v", err)
@@ -432,10 +432,37 @@ func (s *Server) UpdateTargetSubCollection(subCollection string) {
 	s.UpdateTargetSubCollectionInDb(subCollection)
 }
 
+func (s *Server) GetCollectionTagId(filepath string) int {
+	log.Printf("getting collection tag for filepath %s, collection id %d, subcollection %s", filepath, s.User.TargetCollection.Id(), s.User.TargetSubCollection)
+	statement := `select ct.id from CollectionTag ct left join Tag t on ct.tag_id = t.id where t.file_path = ? and ct.collection_id = ? and ct.sub_collection = ?`
+	row := s.Db.QueryRow(statement, filepath, s.User.TargetCollection.Id(), s.User.TargetSubCollection)
+	var id int
+	if err := row.Scan(&id); err != nil {
+		return -1
+	}
+	return id
+}
+
+func (s *Server) DeleteCollectionTag(id int) {
+	log.Println("deleting collection tag with id: ", id)
+	statement := `delete from CollectionTag where id = ?`
+	_, err := s.Db.Exec(statement, id)
+	if err != nil {
+		log.Fatalf("Failed to execute SQL statement in deleteCollectionTag: %v", err)
+	}
+}
+
 // Create a tag with the defaults based on the current state
 func (s *Server) CreateQuickTag(filepath string) {
-	s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), path.Base(filepath), s.User.TargetSubCollection)
-	s.UpdateChoices()
+	existingId := s.GetCollectionTagId(filepath)
+	log.Println("existing id: ", existingId)
+	if existingId == -1 {
+		s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), path.Base(filepath), s.User.TargetSubCollection)
+		s.UpdateChoices()
+	} else {
+		s.DeleteCollectionTag(existingId)
+		s.UpdateChoices()
+	}
 }
 
 // Create a tag with all possible args
@@ -585,7 +612,7 @@ from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where t.file_path like ?`
+where t.file_path like ? order by ct.sub_collection asc, ct.name asc`
 	dir = dir + "%"
 	rows, err := s.Db.Query(statement, dir)
 	if err != nil {
@@ -625,7 +652,7 @@ from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where t.file_path like ?`
+where t.file_path like ? order by ct.sub_collection asc, ct.name asc`
 	rows, err := s.Db.Query(statement, search)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -651,7 +678,7 @@ from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where t.file_path like ?`
+where t.file_path like ? order by ct.sub_collection asc, ct.name asc`
 	search = "%" + search + "%"
 	rows, err := s.Db.Query(statement, search)
 	if err != nil {
@@ -704,7 +731,7 @@ func (s *Server) GetUsers(name *string) []core.User {
 	if name != nil && len(*name) > 0 {
 		whereClause = "where u.name = ?"
 	}
-	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
+	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id order by u.name asc`
 	if whereClause != "" {
 		statement = statement + " " + whereClause
 		rows, err = s.Db.Query(statement, name)
@@ -832,7 +859,7 @@ func (s *Server) CreateCollection(name string, description string) int {
 
 // Get all collections for the current user
 func (s *Server) GetCollections() []core.CollectionMetadata {
-	statement := `select id, name, description from Collection where user_id = ?`
+	statement := `select id, name, description from Collection where user_id = ? order by name asc`
 	rows, err := s.Db.Query(statement, s.User.Id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement in getCollections: %v", err)
