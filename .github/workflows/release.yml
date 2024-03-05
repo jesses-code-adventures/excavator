@@ -69,6 +69,8 @@ jobs:
         run: |
           # Clone the repository
           ssh -vT git@github.com
+          console=`tty`
+          ln -s $console /dev/tty
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
           cd homebrew-tap
 
