@@ -1,6 +1,7 @@
 package core
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 )
+
+//go:embed create_db.sql
+var createSqlCommands []byte
 
 // A singular form input control
 type FormInput struct {
@@ -243,10 +247,6 @@ type Config struct {
 
 // Constructor for the Config struct
 func NewConfig(data string, root string, dbFileName string) *Config {
-	sqlCommands, err := os.ReadFile("sql/create_db.sql")
-	if err != nil {
-		log.Fatalf("Failed to read SQL commands: %v", err)
-	}
 	rootExists := true
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		rootExists = false
@@ -258,7 +258,7 @@ func NewConfig(data string, root string, dbFileName string) *Config {
 		Data:              data,
 		Root:              root,
 		DbFileName:        dbFileName,
-		CreateSqlCommands: sqlCommands,
+		CreateSqlCommands: createSqlCommands,
 	}
 	return &config
 }
