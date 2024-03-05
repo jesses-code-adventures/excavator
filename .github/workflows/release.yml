@@ -54,8 +54,28 @@ jobs:
         goarch: ${{ matrix.goarch }}
         goversion: ${{ steps.set_goversion.outputs.goversion }}
 
-  # homebrew:
-  #   runs-on: ubuntu-latest
-  #   run: |
+  homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: clone tap
+        run: |
+          # Clone the repository
+          git clone https://github.com/jesses-code-adventures/homebrew-tap
+          cd homebrew-tap
 
+          # Use sed to replace version number in-place without creating a backup file
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ env.TAG_NAME }}/g" Formula/excavator.rb
 
+          # Extract the new URL from the file
+          URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
+
+          # Fetch the tarball and compute its SHA256 hash
+          SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
+
+          # Use sed to replace the sha256 line in-place
+          sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
+
+          # Add changes, commit, and push back to the repository
+          git add Formula/excavator.rb
+          git commit -m "Update excavator to ${{ env.TAG_NAME }}"
+          git push origin main # Adjust as needed to your branch name
