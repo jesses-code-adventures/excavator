@@ -58,20 +58,19 @@ type KeyMap struct {
 
 // The actual help text
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Audition, k.CreateQuickTag, k.CreateExport, k.RunExport}
+	return []key.Binding{k.Quit, k.Audition, k.CreateQuickTag, k.CreateExport, k.RunExport, k.ShowHelp}
 }
 
 // Empty because not using
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.JumpUp, k.JumpDown, k.JumpBottom},
-		{k.Audition, k.AuditionRandom, k.ToggleAutoAudition},
-		{k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.CreateQuickTag, k.CreateTag},
-		{k.SearchBuf, k.FuzzySearchFromRoot, k.FuzzySearchFromCurrent},
-		{k.CreateExport, k.RunExport, k.BrowseTargetCollection},
-		{k.ToggleShowCollections},
-		{k.NextLocalSearchResult, k.PreviousLocalSearchResult},
-		{k.InsertMode, k.Quit},
+		{k.Audition, k.AuditionRandom, k.ToggleAutoAudition, k.ToggleShowCollections},
+		{k.NewCollection, k.SetTargetCollection, k.SetTargetSubCollection, k.BrowseTargetCollection},
+		{k.CreateQuickTag, k.CreateTag, k.CreateExport, k.RunExport},
+		{k.SearchBuf, k.FuzzySearchFromRoot, k.FuzzySearchFromCurrent, k.InsertMode},
+		{k.NextLocalSearchResult, k.PreviousLocalSearchResult, k.Quit},
+		{},
 	}
 }
 
