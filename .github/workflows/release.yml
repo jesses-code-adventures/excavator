@@ -76,8 +76,8 @@ jobs:
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
 
           # Configure git user (necessary if not already configured in the workflow)
-          git config user.email "jesse@negativespacesounds.com"
-          git config user.name "Jesse Williams"
+          git config --global user.email "jesse@negativespacesounds.com"
+          git config --global user.name "Jesse Williams"
 
           # Add changes, commit, and push back to the repository
           git add Formula/excavator.rb
