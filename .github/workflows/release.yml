@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_version_tag: ${{ steps.tag_check.outputs.is_version_tag }}
+      goversion: ${{ steps.set_goversion.outputs.goversion }}
     steps:
       - name: Get the tag name from workflow_run
         id: get_tag
@@ -33,6 +34,20 @@ jobs:
         env:
           TAG_NAME: ${{ github.event.workflow_run.head_commit.message }}
 
+
+      - name: Determine Go version
+        id: set_goversion
+        run: |
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
+            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.linux-amd64.tar.gz"
+          elif [ "${{ matrix.goos }}" = "darwin" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
+            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.darwin-arm64.pkg"
+          elif [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
+            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.linux-arm64.tar.gz"
+          elif [ "${{ matrix.goos }}" = "darwin" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
+            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.darwin-amd64.pkg"
+          fi
+
   release:
       runs-on: ubuntu-latest
       strategy:
@@ -48,4 +63,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
-          goversion: "https://go.dev/dl/go1.22.0.linux-arm64.tar.gz"
+          goversion: ${{ steps.set_goversion.outputs.goversion }}
