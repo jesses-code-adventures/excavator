@@ -11,7 +11,7 @@ this serves as an intermediate program to manage your samples, allowing you to r
 it can also export your sample packs as symlinks, so you can create new directories containing samples in your library without wasting disk space.
 
 ## **usage**
-please see [usage.md](https://github.com/jesses-code-adventures/documentation/usage.md) for instructions.
+please see [usage.md](documentation/usage.md) for instructions.
 
 ## **goals**
 minimum for v1.0:
