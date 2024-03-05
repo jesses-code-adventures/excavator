@@ -1,43 +1,38 @@
 name: Build
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  # workflow_run:
-  #   workflows: ["Formatting"]
-  #   types:
-  #     - completed
+  workflow_run:
+    workflows: ["Formatting"]
+    types:
+      - completed
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
+build:
+  name: Build
+  runs-on: ubuntu-latest
+  if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  steps:
+  - uses: actions/checkout@v4
+    name: Set up Go
 
+  - uses: actions/setup-go@v4
+    with:
+      go-version: ^1.22
 
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ^1.22
+  - name: Get libasound2
+    run: sudo apt-get install libasound2-dev
 
-    - name: Get libasound2
-      run: sudo apt-get install libasound2-dev
+  - name: Build
+    run: go build -v ./...
 
-    - name: Build
-      run: go build -v ./...
+  - name: Install
+    run: go install -v ./...
 
-    - name: Install
-      run: go install -v ./...
-
-    - name: Check the build
-      run: |
-        TARGET=$(go env GOPATH)/bin
-        if [[ ":$PATH:" != *":$TARGET:"* ]]; then
-          echo "$TARGET is not in PATH"
-          exit 1
-        fi
-      shell: bash
+  - name: Check the build
+    run: |
+      TARGET=$(go env GOPATH)/bin
+      if [[ ":$PATH:" != *":$TARGET:"* ]]; then
+        echo "$TARGET is not in PATH"
+        exit 1
+      fi
+    shell: bash
