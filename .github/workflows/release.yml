@@ -55,14 +55,16 @@ jobs:
           # build and publish in parallel: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64
           goos: [darwin, linux]
           goarch: [amd64, arm64]
-
       steps:
       - uses: actions/checkout@v4
       - name: Get libasound2
         run: |
           if [ "${{ matrix.goos }}" = "linux" ]; then
-            sudo apt-get install libasound2-dev
+            sudo apt-get install libasound2-dev;
           fi
+      - name: Enable CGO for Linux builds
+        if: matrix.goos == 'linux'
+        run: echo "CGO_ENABLED=1" >> $GITHUB_ENV
       - uses: wangyoucao577/go-release-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
