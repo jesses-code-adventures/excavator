@@ -48,19 +48,19 @@ jobs:
             echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.darwin-amd64.pkg"
           fi
 
-  set_env:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Set CGO_ENABLED
-      run: |
-        echo "CGO_ENABLED=1" >> $GITHUB_ENV
+  # set_env:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Set CGO_ENABLED
+  #     run: |
+  #       echo "CGO_ENABLED=1" >> $GITHUB_ENV
 
   release:
       runs-on: ubuntu-latest
       strategy:
         matrix:
           # build and publish in parallel: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64
-          goos: [linux]
+          goos: [darwin]
           goarch: [amd64, arm64]
 
       steps:
