@@ -70,15 +70,18 @@ jobs:
       - name: clone tap
         run: |
           # Clone the repository
-          ssh -vT git@github.com
-          console=`tty`
-          ln -s $console /dev/tty
+          # ssh -vT git@github.com
+          # console=`tty`
+          # ln -s $console /dev/tty
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
           cd homebrew-tap
 
+      - name: replace version tag in url
+        run: |
           # Use sed to replace version number in-place without creating a backup file
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.is_version_tag }}/g" Formula/excavator.rb
-
+      - name: replace sha256 checksum
+        run: |
           # Extract the new URL from the file
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
 
@@ -88,10 +91,13 @@ jobs:
           # Use sed to replace the sha256 line in-place
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
 
+      - name: set uesr email and name
+        run: |
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
 
-          # Add changes, commit, and push back to the repository
+      - name: push changes
+        run: |
           git add Formula/excavator.rb
           git commit -m "Update excavator to ${{ needs.check_tag.outputs.is_version_tag }}"
           git push origin main # Adjust as needed to your branch name
