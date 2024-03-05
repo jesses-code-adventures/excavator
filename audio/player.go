@@ -55,7 +55,6 @@ type Player struct {
 
 // Push a play command to the audio player's commands channel
 func (a *Player) pushPlayCommand(path string) {
-	log.Println("Pushing play command", path)
 	a.NextCommand = &path
 	a.Commands <- path
 }
@@ -116,7 +115,6 @@ func (a *Player) CloseStreamer() {
 
 // Handle a play command arriving in the audio player's commands channel
 func (a *Player) handlePlayCommand(path string) {
-	log.Println("Handling play command", path)
 	f, err := os.Open(path)
 	if err != nil {
 		log.Fatal("error opening file in handleplaycommand ", err)
@@ -135,7 +133,6 @@ func (a *Player) handlePlayCommand(path string) {
 	done := make(chan bool)
 	speaker.Play(beep.Seq(resampled, beep.Callback(func() {
 		a.Playing = false
-		log.Println("Finished playing audio")
 		if a.NextCommand != nil && *a.NextCommand == path {
 			a.NextCommand = nil
 		}
@@ -149,7 +146,6 @@ func (a *Player) Run() {
 	for {
 		select {
 		case path := <-a.Commands:
-			log.Println("In Run, received play command", path)
 			if a.NextCommand != nil && *a.NextCommand != path {
 				continue
 			}

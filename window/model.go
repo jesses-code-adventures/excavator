@@ -669,8 +669,6 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		m.ShowCollections = !m.ShowCollections
 	case key.Matches(msg, m.Keys.SetTargetSubCollectionRoot):
 		m.Server.UpdateTargetSubCollection("")
-	case key.Matches(msg, m.Keys.ToggleAutoAudition):
-		m.Server.UpdateAutoAudition(!m.Server.User.AutoAudition)
 	}
 	return m, cmd
 }
