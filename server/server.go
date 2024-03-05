@@ -379,7 +379,7 @@ func NewServer(audioPlayer *audio.Player, flags *Flags) Server {
 	return s
 }
 
-func (s Server) AddUserAndRoot() (Server, error){
+func (s Server) AddUserAndRoot() (Server, error) {
 	log.Println("about to handle user arg")
 	user, err := s.HandleUserArg(&s.Flags.User)
 	if err != nil {
