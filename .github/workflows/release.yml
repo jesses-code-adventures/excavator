@@ -71,22 +71,13 @@ jobs:
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
 
-      - name: replace version tag in url
+      - name: replace url and sha
         run: |
           cd homebrew-tap
-          ls
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.is_version_tag }}/g" Formula/excavator.rb
-      - name: replace sha256 checksum
-        run: |
-          # Extract the new URL from the file
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
-
-          # Fetch the tarball and compute its SHA256 hash
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
-
-          # Use sed to replace the sha256 line in-place
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
-
       - name: set uesr email and name
         run: |
           git config user.email "jesse@negativespacesounds.com"
