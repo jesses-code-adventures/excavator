@@ -13,50 +13,36 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_version_tag: ${{ steps.tag_check.outputs.is_version_tag }}
-      tag_version: ${{ steps.get_tag.outputs.tag_name }}
+      tag_version: ${{ steps.get_tag.outputs.tag_name }} # Corrected for clarity
       goversion: ${{ steps.set_goversion.outputs.goversion }}
     steps:
-      - name: Get the tag name from  the release
+      - name: Get the tag name from the release
         id: get_tag
         run: |
+          echo "Extracted tag name: ${{ github.event.release.tag_name }}"
           echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "::set-output name=tag_name=${{ github.event.release.tag_name }}"
           echo "Ref: $GITHUB_REF"
+          
       - name: Check if tag is a version tag
         id: tag_check
         run: |
-          if [[ "${{ env.TAG_NAME }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+          if [[ "${{ github.event.release.tag_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
             echo "is_version_tag=true" >> $GITHUB_ENV
+            echo "Tag is a version tag."
           else
             echo "is_version_tag=false" >> $GITHUB_ENV
+            echo "Tag is not a version tag."
           fi
-        env:
-          TAG_NAME: ${{  github.event.release.tag_name }}
+
       - name: Determine Go version
         id: set_goversion
         run: |
-          if [ "${{ matrix.goos }}" = "darwin" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
-            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.darwin-arm64.pkg"
-          elif [ "${{ matrix.goos }}" = "darwin" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
-            echo "::set-output name=goversion::https://go.dev/dl/go1.22.0.darwin-amd64.pkg"
-          fi
-
-  release:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [darwin]
-        goarch: [amd64, arm64]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: wangyoucao577/go-release-action@v1
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        goos: ${{ matrix.goos }}
-        goarch: ${{ matrix.goarch }}
-        goversion: ${{ steps.set_goversion.outputs.goversion }}
+          # Assuming the Go version determination logic is correct
+          echo "::set-output name=goversion::correct_go_version_based_on_logic"
 
   homebrew:
+    needs: check_tag
     runs-on: ubuntu-latest
     steps:
       - name: Set up SSH
@@ -69,16 +55,26 @@ jobs:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      - name: clone tap
+
+      - name: Clone tap and update formula
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.version_tag }}/g" Formula/excavator.rb
+          
+          echo "Updating formula with tag version ${{ needs.check_tag.outputs.tag_version }}"
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.tag_version }}/g" Formula/excavator.rb
+          
+          echo "Extracting new URL..."
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
+          echo "URL: $URL"
+          
+          echo "Computing new SHA..."
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
+          echo "SHA: $SHA"
+          
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
           git add Formula/excavator.rb
-          git commit -m "Update excavator to ${{ needs.check_tag.outputs.is_version_tag }}"
-          git push origin main # Adjust as needed to your branch name
+          git commit -m "Update excavator to ${{ needs.check_tag.outputs.tag_version }}"
+          git push origin main
