@@ -69,16 +69,12 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       - name: clone tap
         run: |
-          # Clone the repository
-          # ssh -vT git@github.com
-          # console=`tty`
-          # ln -s $console /dev/tty
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
-          cd homebrew-tap
 
       - name: replace version tag in url
         run: |
-          # Use sed to replace version number in-place without creating a backup file
+          cd homebrew-tap
+          ls
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.is_version_tag }}/g" Formula/excavator.rb
       - name: replace sha256 checksum
         run: |
