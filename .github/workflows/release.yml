@@ -15,10 +15,10 @@ jobs:
       is_version_tag: ${{ steps.tag_check.outputs.is_version_tag }}
       goversion: ${{ steps.set_goversion.outputs.goversion }}
     steps:
-      - name: Get the tag name from workflow_run
+      - name: Get the tag name from  the release
         id: get_tag
         run: |
-          echo "TAG_NAME=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "Ref: $GITHUB_REF"
       - name: Check if tag is a version tag
         id: tag_check
