@@ -19,27 +19,26 @@ jobs:
       - name: Get the tag name from the release
         id: get_tag
         run: |
-          echo "Extracted tag name: ${{ github.event.release.tag_name }}"
-          echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "::set-output name=tag_name=${{ github.event.release.tag_name }}"
+          echo "Extracted tag name: ${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "Ref: $GITHUB_REF"
-          
+
       - name: Check if tag is a version tag
         id: tag_check
         run: |
-          if [[ "${{ github.event.release.tag_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+          if [[ "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
             echo "is_version_tag=true" >> $GITHUB_ENV
-            echo "Tag is a version tag."
+            echo "Tag is a version tag." >> $GITHUB_OUTPUT
           else
             echo "is_version_tag=false" >> $GITHUB_ENV
-            echo "Tag is not a version tag."
+            echo "Tag is not a version tag." $GITHUB_OUTPUT
           fi
 
       - name: Determine Go version
         id: set_goversion
         run: |
           # Assuming the Go version determination logic is correct
-          echo "::set-output name=goversion::correct_go_version_based_on_logic"
+          echo "goversion=correct_go_version_based_on_logic" >> $GITHUB_ENV
 
   homebrew:
     needs: check_tag
@@ -62,19 +61,15 @@ jobs:
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          
-          echo "Updating formula with tag version ${{ needs.check_tag.outputs.tag_version }}"
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.tag_version }}/g" Formula/excavator.rb
-          
-          echo "Extracting new URL..."
+          echo "Updating formula with tag version $tag_name" >> $GITHUB_OUTPUT
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
+          echo "Extracting new URL..." >> $GITHUB_OUTPUT
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
-          echo "URL: $URL"
-          
-          echo "Computing new SHA..."
+          echo "URL: $URL">> $GITHUB_OUTPUT
+          echo "Computing new SHA...">> $GITHUB_OUTPUT
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
-          echo "SHA: $SHA"
-          
+          echo "SHA: $SHA">> $GITHUB_OUTPUT
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
           git add Formula/excavator.rb
-          git commit -m "Update excavator to ${{ needs.check_tag.outputs.tag_version }}"
+          git commit -m "Update excavator to $tag_name"
           git push origin main
