@@ -31,7 +31,7 @@ jobs:
             echo "Tag is a version tag." 
           else
             echo "is_version_tag=false" >> $GITHUB_ENV
-            echo "Tag is not a version tag." $GITHUB_OUTPUT
+            echo "Tag is not a version tag." 
           fi
 
       - name: Determine Go version
@@ -39,11 +39,6 @@ jobs:
         run: |
           # Assuming the Go version determination logic is correct
           echo "goversion=correct_go_version_based_on_logic" >> $GITHUB_ENV
-
-  homebrew:
-    needs: check_tag
-    runs-on: ubuntu-latest
-    steps:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
@@ -61,12 +56,12 @@ jobs:
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          echo "Updating formula with tag version $tag_name" >> $GITHUB_OUTPUT
+          echo "Updating formula with tag version $tag_name" 
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
-          echo "Extracting new URL..." >> $GITHUB_OUTPUT
+          echo "Extracting new URL..." 
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           echo "URL: $URL">> $GITHUB_OUTPUT
-          echo "Computing new SHA...">> $GITHUB_OUTPUT
+          echo "Computing new SHA..."
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           echo "SHA: $SHA">> $GITHUB_OUTPUT
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
