@@ -57,7 +57,7 @@ jobs:
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
           echo "Updating formula with tag version $tag_name"
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/v$tag_name/g" Formula/excavator.rb
+          sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
           echo "Extracting new URL..."
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           echo "URL: $URL"
