@@ -13,12 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_version_tag: ${{ steps.tag_check.outputs.is_version_tag }}
+      tag_version: ${{ steps.get_tag.outputs.tag_name }}
       goversion: ${{ steps.set_goversion.outputs.goversion }}
     steps:
       - name: Get the tag name from  the release
         id: get_tag
         run: |
           echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "::set-output name=tag_name=${{ github.event.release.tag_name }}"
           echo "Ref: $GITHUB_REF"
       - name: Check if tag is a version tag
         id: tag_check
@@ -29,7 +31,7 @@ jobs:
             echo "is_version_tag=false" >> $GITHUB_ENV
           fi
         env:
-          TAG_NAME: ${{ github.event.workflow_run.head_commit.message }}
+          TAG_NAME: ${{  github.event.release.tag_name }}
       - name: Determine Go version
         id: set_goversion
         run: |
@@ -71,10 +73,9 @@ jobs:
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
           cd homebrew-tap
-          # git branch --set-upstream-to "github.com/jesses-code-adventures/homebrew-tap.git"
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.is_version_tag }}/g" Formula/excavator.rb
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.version_tag }}/g" Formula/excavator.rb
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
