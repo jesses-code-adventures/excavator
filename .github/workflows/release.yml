@@ -9,7 +9,7 @@ permissions:
     packages: write
 
 jobs:
-  check_tag:
+  release:
     runs-on: ubuntu-latest
     outputs:
       is_version_tag: ${{ steps.tag_check.outputs.is_version_tag }}
@@ -56,6 +56,7 @@ jobs:
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
+          git checkout -b excavator
           echo "Updating formula with tag version $tag_name"
           sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
           echo "Extracting new URL..."
@@ -66,5 +67,5 @@ jobs:
           echo "SHA: $SHA"
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
           git add Formula/excavator.rb
-          git commit -m "Update excavator to $tag_name"
-          git push origin main
+          git commit -m "excavator $tag_name"
+          git push --set-upstream origin excavator
