@@ -19,7 +19,7 @@ jobs:
       - name: Get the tag name from the release
         id: get_tag
         run: |
-          echo "Extracted tag name: ${{ github.event.release.tag_name }}" 
+          echo "Extracted tag name: ${{ github.event.release.tag_name }}"
           echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "Ref: $GITHUB_REF"
 
@@ -28,10 +28,10 @@ jobs:
         run: |
           if [[ "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
             echo "is_version_tag=true" >> $GITHUB_ENV
-            echo "Tag is a version tag." 
+            echo "Tag is a version tag."
           else
             echo "is_version_tag=false" >> $GITHUB_ENV
-            echo "Tag is not a version tag." 
+            echo "Tag is not a version tag."
           fi
 
       - name: Determine Go version
@@ -56,9 +56,9 @@ jobs:
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          echo "Updating formula with tag version $tag_name" 
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
-          echo "Extracting new URL..." 
+          echo "Updating formula with tag version $tag_name"
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/v$tag_name/g" Formula/excavator.rb
+          echo "Extracting new URL..."
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           echo "URL: $URL"
           echo "Computing new SHA..."
