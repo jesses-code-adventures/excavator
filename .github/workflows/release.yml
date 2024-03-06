@@ -70,19 +70,14 @@ jobs:
       - name: clone tap
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
-          git init
-          git branch --set-upstream-to "github.com/jesses-code-adventures/homebrew-tap.git"
+          cd homebrew-tap
+          # git branch --set-upstream-to "github.com/jesses-code-adventures/homebrew-tap.git"
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-      - name: replace url and sha
-        run: |
-          cd homebrew-tap
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/${{ needs.check_tag.outputs.is_version_tag }}/g" Formula/excavator.rb
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
-      - name: push changes
-        run: |
           git add Formula/excavator.rb
           git commit -m "Update excavator to ${{ needs.check_tag.outputs.is_version_tag }}"
           git push origin main # Adjust as needed to your branch name
