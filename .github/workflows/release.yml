@@ -60,10 +60,10 @@ jobs:
           sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
           echo "Extracting new URL..." 
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
-          echo "URL: $URL">> $GITHUB_OUTPUT
+          echo "URL: $URL"
           echo "Computing new SHA..."
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
-          echo "SHA: $SHA">> $GITHUB_OUTPUT
+          echo "SHA: $SHA"
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
           git add Formula/excavator.rb
           git commit -m "Update excavator to $tag_name"
