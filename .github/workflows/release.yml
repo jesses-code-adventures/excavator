@@ -70,7 +70,8 @@ jobs:
       - name: clone tap
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
-
+          git config user.email "jesse@negativespacesounds.com"
+          git config user.name "GitHub Actions"
       - name: replace url and sha
         run: |
           cd homebrew-tap
@@ -78,11 +79,6 @@ jobs:
           URL=$(grep "url \"" Formula/excavator.rb | sed 's/.*url "\(.*\)".*/\1/')
           SHA=$(curl -Ls "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           sed -i "s/sha256 .*/sha256 \"$SHA\"/" Formula/excavator.rb
-      - name: set uesr email and name
-        run: |
-          git config user.email "jesse@negativespacesounds.com"
-          git config user.name "GitHub Actions"
-
       - name: push changes
         run: |
           git add Formula/excavator.rb
