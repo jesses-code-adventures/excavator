@@ -70,6 +70,10 @@ jobs:
       - name: clone tap
         run: |
           git clone git@github.com:jesses-code-adventures/homebrew-tap.git
+          git init
+          git branch --set-upstream-to "github.com/jesses-code-adventures/homebrew-tap.git"
+          git config user.email "jesse@negativespacesounds.com"
+          git config user.name "GitHub Actions"
       - name: replace url and sha
         run: |
           cd homebrew-tap
