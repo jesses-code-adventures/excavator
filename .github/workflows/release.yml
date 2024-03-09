@@ -56,7 +56,7 @@ jobs:
           cd homebrew-tap
           git config user.email "jesse@negativespacesounds.com"
           git config user.name "GitHub Actions"
-          git checkout -b excavator
+          git checkout excavator
           echo "Updating formula with tag version $tag_name"
           sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+(-lw)?/$tag_name/g" Formula/excavator.rb
           echo "Extracting new URL..."
