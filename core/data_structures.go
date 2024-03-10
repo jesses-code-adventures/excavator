@@ -2,6 +2,7 @@ package core
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -107,6 +108,7 @@ type SelectableListItem interface {
 	Path() string
 	IsDir() bool
 	IsFile() bool
+	TaggedDirEntry() (TaggedDirEntry, error)
 }
 
 // A list where a single item can be selected
@@ -173,6 +175,10 @@ func (t CollectionTag) IsFile() bool {
 	return !t.IsDir()
 }
 
+func (t CollectionTag) TaggedDirEntry() (TaggedDirEntry, error) {
+	return TaggedDirEntry{}, errors.New("Collection tags do not have collection tags")
+}
+
 // A directory entry with associated tags
 type TaggedDirEntry struct {
 	FilePath string
@@ -210,6 +216,10 @@ func (d TaggedDirEntry) IsDir() bool {
 
 func (d TaggedDirEntry) IsFile() bool {
 	return !d.Dir
+}
+
+func (d TaggedDirEntry) TaggedDirEntry() (TaggedDirEntry, error) {
+	return d, nil
 }
 
 // A string representing the collection tags associated with a directory entry
@@ -335,6 +345,10 @@ func (c CollectionMetadata) IsFile() bool {
 	return false
 }
 
+func (c CollectionMetadata) TaggedDirEntry() (TaggedDirEntry, error) {
+	return TaggedDirEntry{}, errors.New("Collection metadata doesnt have collection tags")
+}
+
 type SubCollection struct {
 	name string
 }
@@ -370,6 +384,10 @@ func (s SubCollection) IsDir() bool {
 
 func (s SubCollection) IsFile() bool {
 	return false
+}
+
+func (s SubCollection) TaggedDirEntry() (TaggedDirEntry, error) {
+	return TaggedDirEntry{}, errors.New("Subcollection doesnt have collection tags")
 }
 
 type Export struct {
@@ -409,4 +427,8 @@ func (e Export) Description() string {
 	} else {
 		return "abstract"
 	}
+}
+
+func (e Export) TaggedDirEntry() (TaggedDirEntry, error) {
+	return TaggedDirEntry{}, errors.New("Exports do not have collection tags")
 }

@@ -452,16 +452,57 @@ func (s *Server) DeleteCollectionTag(id int) {
 	}
 }
 
+func (s *Server) findPositionOfChoice(path string) int {
+	for i, choice := range s.State.Choices {
+		if choice.Path() == path {
+			return i
+		}
+	}
+	return -1
+}
+
+func (s *Server) addTagToChoice(path string, tag core.CollectionTag) {
+	position := s.findPositionOfChoice(path)
+	if position == -1 {
+		return
+	}
+	choice, err := s.State.Choices[position].TaggedDirEntry()
+	if err != nil {
+		return
+	}
+	choice.Tags = append(choice.Tags, tag)
+	s.State.Choices[position] = choice
+	log.Printf("choices: %v", s.State.Choices)
+}
+
+func (s *Server) removeTagFromChoice(path string, tagId int) {
+	position := s.findPositionOfChoice(path)
+	if position == -1 {
+		return
+	}
+	choice, err := s.State.Choices[position].TaggedDirEntry()
+	if err != nil {
+		return
+	}
+	for i, tag := range choice.Tags {
+		if tag.Id() == tagId {
+			choice.Tags = append(choice.Tags[:i], choice.Tags[i+1:]...)
+			break
+		}
+	}
+	s.State.Choices[position] = choice
+}
+
+
 // Create a tag with the defaults based on the current state
 func (s *Server) CreateQuickTag(filepath string) {
 	existingId := s.GetCollectionTagId(filepath)
-	log.Println("existing id: ", existingId)
 	if existingId == -1 {
-		s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), path.Base(filepath), s.User.TargetSubCollection)
-		s.UpdateChoices()
+		_, ctId := s.CreateCollectionTagInDb(filepath, s.User.TargetCollection.Id(), path.Base(filepath), s.User.TargetSubCollection)
+		s.addTagToChoice(filepath, core.NewCollectionTag(ctId, path.Base(filepath), filepath, s.User.TargetCollection.Name(), s.User.TargetSubCollection))
 	} else {
 		s.DeleteCollectionTag(existingId)
-		s.UpdateChoices()
+		s.removeTagFromChoice(filepath, existingId)
 	}
 }
 
@@ -914,7 +955,7 @@ func (s *Server) CreateTagInDb(filePath string) int {
 }
 
 // Add a tag to a collection in the database
-func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string, subCollection string) {
+func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string, subCollection string) int {
 	log.Printf("Tag id: %d, collectionId: %d, name: %s, subCollection: %s", tagId, collectionId, name, subCollection)
 	res, err := s.Db.Exec("insert or ignore into CollectionTag (tag_id, collection_id, name, sub_collection) values (?, ?, ?, ?)", tagId, collectionId, name, subCollection)
 	if err != nil {
@@ -925,16 +966,18 @@ func (s *Server) AddTagToCollectionInDb(tagId int, collectionId int, name string
 		log.Fatalf("Failed to get last insert ID: %v", err)
 	}
 	log.Printf("Collection tag insert ID: %d", id)
+	return int(id)
 }
 
 // Add a CollectionTag to the database, handling creation of core tag if needed
-func (s *Server) CreateCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) {
+// Returns the tag id and the collection tag id
+func (s *Server) CreateCollectionTagInDb(filePath string, collectionId int, name string, subCollection string) (int, int) {
 	if collectionId == 0 {
 		log.Fatal("Collection id is 0")
 	}
 	tagId := s.CreateTagInDb(filePath)
 	log.Printf("Tag id: %d", tagId)
-	s.AddTagToCollectionInDb(tagId, collectionId, name, subCollection)
+	return tagId, s.AddTagToCollectionInDb(tagId, collectionId, name, subCollection)
 }
 
 func (s *Server) UpdateTargetSubCollectionInDb(subCollection string) {
@@ -983,6 +1026,10 @@ func (c CollectionItem) IsDir() bool {
 
 func (c CollectionItem) IsFile() bool {
 	return true
+}
+
+func (c CollectionItem) TaggedDirEntry() (core.TaggedDirEntry, error) {
+	return core.TaggedDirEntry{}, errors.New("No collection tags on collection item")
 }
 
 func (s *Server) GetCollection(collectionId int) []core.SelectableListItem {
