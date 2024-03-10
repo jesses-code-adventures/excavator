@@ -97,6 +97,9 @@ type StatusDisplayItem struct {
 }
 
 func (s StatusDisplayItem) View() string {
+	if len(s.value) == 0 {
+		return s.keyStyle.Render(s.key)
+	}
 	return s.keyStyle.Render(s.key+": ") + s.valueStyle.Render(s.value)
 }
 
@@ -116,17 +119,17 @@ func (m Model) GetStatusDisplay() string {
 	}
 	termWidth := m.Viewport.Width
 	msg := ""
-	// hack to make centering work
-	msgRaw := fmt.Sprintf("collection: %v, subcollection: %v, items: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, len(m.Server.State.Choices))
+	msgRaw := fmt.Sprintf("collection: %v • subcollection: %v • dir: %v • items: %v", m.Server.User.TargetCollection.Name(), m.Server.User.TargetSubCollection, m.Server.State.GetCurrentLocationFromRoot(), len(m.Server.State.Choices))
 	items := []StatusDisplayItem{
 		NewStatusDisplayItem("collection", m.Server.User.TargetCollection.Name()),
 		NewStatusDisplayItem("subcollection", m.Server.User.TargetSubCollection),
+		NewStatusDisplayItem("dir", m.Server.State.GetCurrentLocationFromRoot()),
 		NewStatusDisplayItem("items", fmt.Sprintf("%v", len(m.Server.State.Choices))),
 	}
 	for i, item := range items {
 		msg += item.View()
 		if i != len(items)-1 {
-			msg = msg + HelpValueStyle.Render(", ")
+			msg = msg + HelpValueStyle.Render(" • ")
 		}
 	}
 	padding := (termWidth - len(msgRaw)) / 2
@@ -149,6 +152,9 @@ func (m Model) FooterView() string {
 	}
 	paddedHelpStyle := lipgloss.NewStyle().PaddingLeft(padding).PaddingRight(padding)
 	centeredHelpText := paddedHelpStyle.Render(helpText)
+	if m.ExtendedHelp {
+		return FooterStyle.Render(centeredHelpText)
+	}
 	return FooterStyle.Render(m.GetStatusDisplay() + "\n" + centeredHelpText)
 }
 

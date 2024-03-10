@@ -216,6 +216,13 @@ func (s *Server) GetAllDirectories(path string) []string {
 	return dirs
 }
 
+func (s *State) GetCurrentLocationFromRoot() string {
+	if s.Root == s.Dir {
+		return "root"
+	}
+	return strings.TrimPrefix(s.Dir, s.Root)
+}
+
 // The main struct holding the Server
 type Server struct {
 	Config *core.Config
@@ -492,7 +499,6 @@ func (s *Server) removeTagFromChoice(path string, tagId int) {
 	}
 	s.State.Choices[position] = choice
 }
-
 
 // Create a tag with the defaults based on the current state
 func (s *Server) CreateQuickTag(filepath string) {
