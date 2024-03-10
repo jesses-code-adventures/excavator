@@ -274,7 +274,7 @@ func NewConfig(data string, root string, dbFileName string) *Config {
 }
 
 func (c *Config) SetRoot(root string) {
-	root = ExpandHomeDir(root)
+	root = ExpandPath(root)
 	c.Root = root
 }
 

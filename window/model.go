@@ -293,6 +293,7 @@ func (m Model) HandleTitledList(msg tea.Msg, cmd tea.Cmd, window WindowName) (Mo
 			m.Server.State.Choices = append(m.Server.State.Choices, tag)
 		}
 	case RunExportWindow:
+		m.Server.State.Choices = make([]core.SelectableListItem, 0)
 		exports := m.Server.GetExports()
 		for _, export := range exports {
 			m.Server.State.Choices = append(m.Server.State.Choices, export)
@@ -480,7 +481,7 @@ func (m Model) HandleListSelectionKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, tea.C
 			}
 		case RunExportWindow:
 			if export, ok := m.Server.State.Choices[m.Cursor].(core.Export); ok {
-				m.Server.ExportCollection(m.Server.User.TargetCollection.Id(), export.Id())
+				m.Server.ExportCollection(m.Server.GetCollectionTags(m.Server.User.TargetCollection.Id()), m.Server.GetExport(export.Id()))
 			} else {
 				log.Fatalf("Invalid list selection item type")
 			}

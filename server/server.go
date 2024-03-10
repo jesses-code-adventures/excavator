@@ -336,14 +336,14 @@ type Flags struct {
 }
 
 func ParseFlags() *Flags {
-	var data = flag.String("data", "~/.excavator-tui", "Local data storage path")
+	var data = flag.String("data", "~/.local/state/excavator-tui", "Local data storage path")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
 	var logFile = flag.String("log", "logfile", "Log file name")
 	var samples = flag.String("root", "~/Library/Audio/Sounds/Samples", "Root samples directory")
 	var userArg = flag.String("user", "", "User name to launch with")
 	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
-	return &Flags{Data: core.ExpandHomeDir(*data), DbFileName: *dbFileName, LogFile: *logFile, Root: core.ExpandHomeDir(*samples), User: *userArg, Watch: *watch}
+	return &Flags{Data: core.ExpandPath(*data), DbFileName: *dbFileName, LogFile: *logFile, Root: core.ExpandPath(*samples), User: *userArg, Watch: *watch}
 }
 
 // Part of newServer constructor
@@ -571,9 +571,9 @@ func (s *Server) GetExport(id int) core.Export {
 	return core.NewExport(id, name, outputDir, concrete)
 }
 
-func (s *Server) ExportCollection(collectionId int, exportId int) {
-	export := s.GetExport(exportId)
-	tags := s.GetCollectionTags(collectionId)
+func (s *Server) ExportCollection(tags []core.CollectionTag, export core.Export) {
+	log.Printf("export: %v", export)
+	log.Printf("num tags: %v", len(tags))
 	var copyFn func(source string, destination string) error
 	if export.Description() == "concrete" {
 		copyFn = os.Link
@@ -581,20 +581,30 @@ func (s *Server) ExportCollection(collectionId int, exportId int) {
 		copyFn = os.Symlink
 	}
 	for _, tag := range tags {
+		log.Printf("tag: %v", tag)
 		source := tag.FilePath
 		_, err := os.Stat(source)
 		if err != nil {
 			log.Fatalf("Source doesn't exist: %v", err)
 		}
-		dir := path.Join(export.Path(), export.Name(), tag.CollectionName, tag.SubCollection)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			os.MkdirAll(dir, 0755)
+		dir := core.ExpandPath(path.Join(export.Path(), tag.CollectionName, tag.SubCollection))
+		log.Printf("making dir: %s", dir)
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			log.Fatalf("Failed to create dir: %v", err)
 		}
-		destination := path.Join(dir, path.Base(tag.FilePath)) // Todo: use name field from collection tag
-		if _, err := os.Stat(destination); os.IsNotExist(err) {
-			if err := copyFn(source, destination); err != nil {
-				log.Fatalf("Failed to create link: %v", err)
-			}
+		log.Printf("output dir: %s", dir)
+		destination := path.Join(dir, tag.Name())
+		_, err = os.Stat(destination)
+		if err == nil {
+			log.Printf("Destination already exists: %s", destination)
+			continue
+		}
+		log.Printf("copying %s to %s", source, destination)
+		if err := copyFn(source, destination); err != nil {
+			log.Fatalf("Failed to create link: %v", err)
+		} else {
+			log.Printf("Created link from %s to %s", source, destination)
 		}
 	}
 }
@@ -608,7 +618,7 @@ from CollectionTag ct
 left join Collection col
 on ct.collection_id = col.id
 left join Tag t on ct.tag_id = t.id
-where ct.id = ? order by ct.sub_collection asc, ct.name asc`
+where col.id = ? order by ct.sub_collection asc, ct.name asc`
 	rows, err := s.Db.Query(statement, id)
 	if err != nil {
 		log.Fatalf("Failed to execute SQL statement: %v", err)
@@ -621,6 +631,7 @@ where ct.id = ? order by ct.sub_collection asc, ct.name asc`
 		if err := rows.Scan(&id, &filePath, &collectionName, &subCollection, &name); err != nil {
 			log.Fatalf("Failed to scan row in getcollectiontags: %v", err)
 		}
+		log.Printf("appending tag id %d, name %s, filepath %s, collection name %s, subcollection %s", id, name, filePath, collectionName, subCollection)
 		tags = append(tags, core.NewCollectionTag(id, name, filePath, collectionName, subCollection))
 	}
 	return tags
@@ -835,7 +846,7 @@ func (s *Server) SetRootFromInput(root string) error {
 	if len(root) == 0 {
 		return errors.New("No root entered")
 	}
-	root = core.ExpandHomeDir(root)
+	root = core.ExpandPath(root)
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		return errors.New("Root does not exist")
 	}

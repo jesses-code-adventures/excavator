@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func ExpandHomeDir(dir string) string {
+func ExpandPath(dir string) string {
 	if dir[:2] == "~/" {
 		home, err := os.UserHomeDir()
 		if err != nil {
