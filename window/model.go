@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"path"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -634,13 +633,7 @@ func (m Model) HandleSearchableListNavKey(msg tea.KeyMsg, cmd tea.Cmd) (Model, t
 		}
 		choice := m.Server.State.Choices[m.Cursor]
 		if !choice.IsDir() && choice.IsFile() {
-			var fp string
-			if !strings.Contains(choice.Path(), m.Server.State.Dir) {
-				fp = filepath.Join(m.Server.State.Dir, choice.Path())
-			} else {
-				fp = choice.Path()
-			}
-			m.Server.CreateQuickTag(fp)
+			m.Server.CreateQuickTag(choice.Path())
 		}
 	case key.Matches(msg, m.Keys.Enter):
 		value := m.SearchableSelectableList.Search.Input.Value()
