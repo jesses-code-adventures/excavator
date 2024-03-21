@@ -235,11 +235,14 @@ type Server struct {
 
 func (s *Server) HandleUserArg(userCliArg *string) (core.User, error) {
 	var user core.User
+	log.Println("in HandleUserArg with userCliArg ", *userCliArg)
 	users := s.GetUsers(userCliArg)
+	log.Println("in handleUserArg got users ", users)
 	if len(*userCliArg) == 0 && len(users) == 0 {
 		return core.User{}, errors.New("No users found")
 	}
 	if len(*userCliArg) == 0 && len(users) > 0 {
+		log.Println("---> returning user ", users[0])
 		user = users[0]
 		return user, nil
 	}
@@ -339,7 +342,7 @@ func ParseFlags() *Flags {
 	var data = flag.String("data", "~/.local/state/excavator-tui", "Local data storage path")
 	var dbFileName = flag.String("db", "excavator", "Database file name")
 	var logFile = flag.String("log", "logfile", "Log file name")
-	var samples = flag.String("root", "~/Library/Audio/Sounds/Samples", "Root samples directory")
+	var samples = flag.String("root", "", "Root samples directory")
 	var userArg = flag.String("user", "", "User name to launch with")
 	var watch = flag.Bool("watch", false, "Watch for changes in the samples directory")
 	flag.Parse()
@@ -349,7 +352,7 @@ func ParseFlags() *Flags {
 // Part of newServer constructor
 func (s Server) HandleRootConstruction() (Server, error) {
 	if s.User.Root == "" && s.Config.Root == "" {
-		return Server{}, errors.New("no root found")
+		return s, errors.New("no root found")
 	} else if s.Config.Root == "" {
 		s.Config.Root = s.User.Root
 	} else if s.User.Root == "" {
@@ -363,9 +366,11 @@ func (s Server) HandleRootConstruction() (Server, error) {
 }
 
 // Construct the server
-func NewServer(audioPlayer *audio.Player, flags *Flags) Server {
-	config := core.NewConfig(flags.Data, flags.Root, flags.DbFileName)
-	config.CreateDataDirectory()
+func NewServer(audioPlayer *audio.Player, flags *Flags) (Server, error) {
+	config, err := core.NewConfig(flags.Data, flags.Root, flags.DbFileName)
+	if err == nil {
+		config.CreateDataDirectory()
+	}
 	dbPath := config.GetDbPath()
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -377,13 +382,16 @@ func NewServer(audioPlayer *audio.Player, flags *Flags) Server {
 			log.Fatalf("Failed to execute SQL commands: %v", innerErr)
 		}
 	}
+	if db == nil {
+		log.Fatalf("db not constructed, getting out of here")
+	}
 	s := Server{
 		Db:     db,
 		Player: audioPlayer,
 		Config: config,
 		Flags:  flags,
 	}
-	return s
+	return s, nil
 }
 
 func (s Server) AddUserAndRoot() (Server, error) {
@@ -782,12 +790,14 @@ func (s *Server) GetUser(id int) core.User {
 
 // Get all users
 func (s *Server) GetUsers(name *string) []core.User {
-	log.Println("In get users")
+	log.Println("In get users with name ", *name)
 	var whereClause string
 	var rows *sql.Rows
 	var err error
 	if name != nil && len(*name) > 0 {
 		whereClause = "where u.name = ?"
+	} else {
+		whereClause = ""
 	}
 	statement := `select u.id as user_id, u.name as user_name, c.id as collection_id, c.name as collection_name, c.description, u.auto_audition, u.selected_subcollection, u.root from User u left join Collection c on u.selected_collection = c.id`
 	if whereClause != "" {
@@ -848,7 +858,10 @@ func (s *Server) SetRootFromInput(root string) error {
 	}
 	root = core.ExpandPath(root)
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		return errors.New("Root does not exist")
+		innerErr := os.MkdirAll(root, 0700)
+		if innerErr != nil {
+			log.Fatalf("couldn't create a directory at ", root)
+		}
 	}
 	s.State = NewState(root, root, s.GetDirectoryTags)
 	s.State.UpdateChoices()

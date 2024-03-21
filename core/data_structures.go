@@ -256,21 +256,21 @@ type Config struct {
 }
 
 // Constructor for the Config struct
-func NewConfig(data string, root string, dbFileName string) *Config {
+func NewConfig(data string, root string, dbFileName string) (*Config, error) {
 	rootExists := true
-	if _, err := os.Stat(root); os.IsNotExist(err) {
-		rootExists = false
-	}
-	if !rootExists {
-		log.Fatalf("No root samples directory found at %v", root)
-	}
 	config := Config{
 		Data:              data,
 		Root:              root,
 		DbFileName:        dbFileName,
 		CreateSqlCommands: createSqlCommands,
 	}
-	return &config
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		rootExists = false
+	}
+	if !rootExists {
+		return &config, errors.New(fmt.Sprintf("No root samples directory found at %v", root))
+	}
+	return &config, nil
 }
 
 func (c *Config) SetRoot(root string) {

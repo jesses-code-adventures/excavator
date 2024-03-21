@@ -7,6 +7,9 @@ import (
 )
 
 func ExpandPath(dir string) string {
+	if len(dir) < 2	{
+		return dir
+	}
 	if dir[:2] == "~/" {
 		home, err := os.UserHomeDir()
 		if err != nil {
