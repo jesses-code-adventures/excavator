@@ -860,7 +860,7 @@ func (s *Server) SetRootFromInput(root string) error {
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		innerErr := os.MkdirAll(root, 0700)
 		if innerErr != nil {
-			log.Fatalf("couldn't create a directory at ", root)
+			log.Fatal("couldn't create a directory at ", root)
 		}
 	}
 	s.State = NewState(root, root, s.GetDirectoryTags)
