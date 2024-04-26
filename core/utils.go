@@ -7,7 +7,7 @@ import (
 )
 
 func ExpandPath(dir string) string {
-	if len(dir) < 2	{
+	if len(dir) < 2 {
 		return dir
 	}
 	if dir[:2] == "~/" {
